@@ -1,4 +1,5 @@
 import { Address, erc20Abi, parseUnits } from 'viem'
+import RouterAbi from '@/app/abis/Router.json'
 import { resolveTokenBySymbol } from './tokens'
 import { quoteBest, getPoolById, type Pool } from './routing/pools'
 import { findBestRouteQuote, discoverRoutes, quoteRoute, type Route, type RouteQuote } from './routing/paths'
@@ -81,7 +82,7 @@ export async function simulateCustomSwap(
     throw new CustomSwapError('UNSUPPORTED_TOKEN', 'Unsupported token symbol(s)', { data: { tokenIn: params.tokenInSymbol, tokenOut: params.tokenOutSymbol } })
   }
   const amountInUnits = parseUnits(params.amount, tokenIn.decimals)
-  const routerAddress = (process.env.CUSTOM_SWAP_ROUTER || '').trim() as Address | ''
+  const routerAddress = (process.env.CUSTOM_SWAP_ROUTER || process.env.NEXT_PUBLIC_AMM_ROUTER || '').trim() as Address | ''
   if (!routerAddress) {
     throw new CustomSwapError('ROUTER_NOT_CONFIGURED', 'CUSTOM_SWAP_ROUTER not set')
   }
@@ -135,23 +136,18 @@ export async function simulateCustomSwap(
       } else {
         // 3. Final fallback: on-chain router static call
         try {
-          expectedOutUnits = await ctx.publicClient.readContract({
+          // Build simple direct path [tokenIn, tokenOut]
+          const path = [tokenIn.address, tokenOut.address]
+          const amounts = await ctx.publicClient.readContract({
             address: routerAddress,
-            abi: CUSTOM_SWAP_ABI as any,
-            functionName: 'swapExactIn',
-            args: [
-              tokenIn.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenIn.address,
-              tokenOut.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenOut.address,
-              amountInUnits,
-              BigInt(0),
-              params.recipient || ctx.accountAddress,
-              BigInt(Math.floor(Date.now() / 1000) + 60 * 5),
-              []
-            ]
-          })
-          routeKind = 'ROUTER_STATIC'
+            abi: RouterAbi as any,
+            functionName: 'getAmountsOut',
+            args: [amountInUnits, path]
+          }) as bigint[]
+          expectedOutUnits = amounts[amounts.length - 1]
+          routeKind = 'ROUTER_DIRECT_FALLBACK'
         } catch (e: any) {
-          throw wrapUnknown('SIMULATION_FAILED', 'Simulation failed', e)
+          throw wrapUnknown('SIMULATION_FAILED', 'Router getAmountsOut failed', e)
         }
       }
     }
@@ -178,22 +174,7 @@ export async function simulateCustomSwap(
  * Placeholder ABI for future custom router. Replace when contract deployed.
  */
 export const CUSTOM_SWAP_ABI = [
-  // Example function signature (not yet deployed)
-  {
-    type: 'function',
-    name: 'swapExactIn',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'tokenIn', type: 'address' },
-      { name: 'tokenOut', type: 'address' },
-      { name: 'amountIn', type: 'uint256' },
-      { name: 'minAmountOut', type: 'uint256' },
-      { name: 'recipient', type: 'address' },
-      { name: 'deadline', type: 'uint256' },
-      { name: 'hops', type: 'address[]' } // Simplified placeholder
-    ],
-    outputs: [ { name: 'amountOut', type: 'uint256' } ]
-  }
+  // Placeholder retained for future custom aggregator router; currently unused for simulation.
 ] as const
 
 export interface CustomSwapParams {
