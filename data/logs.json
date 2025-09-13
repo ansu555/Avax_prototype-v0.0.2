@@ -1,5 +1,525 @@
 [
   {
+    "id": "log_1757782016532_7z4fzm",
+    "ownerAddress": "0x0000000000000000000000000000000000000000",
+    "ruleId": "rule_1756454137894_d3sxos",
+    "action": "preview_trade",
+    "details": {
+      "rule": {
+        "id": "rule_1756454137894_d3sxos",
+        "ownerAddress": "0x0000000000000000000000000000000000000000",
+        "type": "rebalance",
+        "targets": [
+          "a91GCGd_u96cF",
+          "zNZHO_Sjf",
+          "-l8Mn2pVlRs-p",
+          "razxDUgYGNAdQ"
+        ],
+        "rotateTopN": 3,
+        "maxSpendUSD": 100,
+        "maxSlippage": 0.5,
+        "trigger": {
+          "type": "trend_pct",
+          "value": 3,
+          "window": "7d"
+        },
+        "cooldownMinutes": 60,
+        "status": "active",
+        "createdAt": "2025-08-29T07:55:37.894Z"
+      },
+      "plan": {
+        "totalSpendUSD": 100,
+        "legs": [
+          {
+            "coinId": "a91GCGd_u96cF",
+            "side": "buy",
+            "price": 0.29681046807720124,
+            "qty": 84.22883519558829,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "zNZHO_Sjf",
+            "side": "buy",
+            "price": 238.69828139986336,
+            "qty": 0.10473472977428111,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "-l8Mn2pVlRs-p",
+            "side": "buy",
+            "price": 3.1241914434805826,
+            "qty": 8.002070440391494,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "razxDUgYGNAdQ",
+            "side": "buy",
+            "price": 4638.194338230582,
+            "qty": 0.005390028570803097,
+            "spendUSD": 25
+          }
+        ]
+      }
+    },
+    "status": "simulated",
+    "createdAt": "2025-09-13T16:46:56.532Z"
+  },
+  {
+    "id": "log_1757777972104_irgdfh",
+    "ownerAddress": "0x0000000000000000000000000000000000000000",
+    "ruleId": "rule_1756454137894_d3sxos",
+    "action": "preview_trade",
+    "details": {
+      "rule": {
+        "id": "rule_1756454137894_d3sxos",
+        "ownerAddress": "0x0000000000000000000000000000000000000000",
+        "type": "rebalance",
+        "targets": [
+          "a91GCGd_u96cF",
+          "zNZHO_Sjf",
+          "-l8Mn2pVlRs-p",
+          "razxDUgYGNAdQ"
+        ],
+        "rotateTopN": 3,
+        "maxSpendUSD": 100,
+        "maxSlippage": 0.5,
+        "trigger": {
+          "type": "trend_pct",
+          "value": 3,
+          "window": "7d"
+        },
+        "cooldownMinutes": 60,
+        "status": "active",
+        "createdAt": "2025-08-29T07:55:37.894Z"
+      },
+      "plan": {
+        "totalSpendUSD": 100,
+        "legs": [
+          {
+            "coinId": "a91GCGd_u96cF",
+            "side": "buy",
+            "price": 0.2964962226148644,
+            "qty": 84.31810624607486,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "zNZHO_Sjf",
+            "side": "buy",
+            "price": 239.08297408909223,
+            "qty": 0.10456620800895661,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "-l8Mn2pVlRs-p",
+            "side": "buy",
+            "price": 3.131040483654542,
+            "qty": 7.984566194691954,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "razxDUgYGNAdQ",
+            "side": "buy",
+            "price": 4669.619248027887,
+            "qty": 0.0053537555573847295,
+            "spendUSD": 25
+          }
+        ]
+      }
+    },
+    "status": "simulated",
+    "createdAt": "2025-09-13T15:39:32.104Z"
+  },
+  {
+    "id": "log_1757763971962_nrdi1m",
+    "ownerAddress": "0x0000000000000000000000000000000000000000",
+    "ruleId": "rule_1756454137894_d3sxos",
+    "action": "preview_trade",
+    "details": {
+      "rule": {
+        "id": "rule_1756454137894_d3sxos",
+        "ownerAddress": "0x0000000000000000000000000000000000000000",
+        "type": "rebalance",
+        "targets": [
+          "a91GCGd_u96cF",
+          "zNZHO_Sjf",
+          "-l8Mn2pVlRs-p",
+          "razxDUgYGNAdQ"
+        ],
+        "rotateTopN": 3,
+        "maxSpendUSD": 100,
+        "maxSlippage": 0.5,
+        "trigger": {
+          "type": "trend_pct",
+          "value": 3,
+          "window": "7d"
+        },
+        "cooldownMinutes": 60,
+        "status": "active",
+        "createdAt": "2025-08-29T07:55:37.894Z"
+      },
+      "plan": {
+        "totalSpendUSD": 100,
+        "legs": [
+          {
+            "coinId": "a91GCGd_u96cF",
+            "side": "buy",
+            "price": 0.29503792252986927,
+            "qty": 84.73486996394178,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "zNZHO_Sjf",
+            "side": "buy",
+            "price": 242.46126615022962,
+            "qty": 0.10310925285901104,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "-l8Mn2pVlRs-p",
+            "side": "buy",
+            "price": 3.172099499865929,
+            "qty": 7.881215580109212,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "razxDUgYGNAdQ",
+            "side": "buy",
+            "price": 4722.95018303193,
+            "qty": 0.0052933016506964475,
+            "spendUSD": 25
+          }
+        ]
+      }
+    },
+    "status": "simulated",
+    "createdAt": "2025-09-13T11:46:11.962Z"
+  },
+  {
+    "id": "log_1757763971830_1yo4bv",
+    "ownerAddress": "0x0000000000000000000000000000000000000000",
+    "ruleId": "rule_1756454137894_d3sxos",
+    "action": "preview_trade",
+    "details": {
+      "rule": {
+        "id": "rule_1756454137894_d3sxos",
+        "ownerAddress": "0x0000000000000000000000000000000000000000",
+        "type": "rebalance",
+        "targets": [
+          "a91GCGd_u96cF",
+          "zNZHO_Sjf",
+          "-l8Mn2pVlRs-p",
+          "razxDUgYGNAdQ"
+        ],
+        "rotateTopN": 3,
+        "maxSpendUSD": 100,
+        "maxSlippage": 0.5,
+        "trigger": {
+          "type": "trend_pct",
+          "value": 3,
+          "window": "7d"
+        },
+        "cooldownMinutes": 60,
+        "status": "active",
+        "createdAt": "2025-08-29T07:55:37.894Z"
+      },
+      "plan": {
+        "totalSpendUSD": 100,
+        "legs": [
+          {
+            "coinId": "a91GCGd_u96cF",
+            "side": "buy",
+            "price": 0.29503792252986927,
+            "qty": 84.73486996394178,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "zNZHO_Sjf",
+            "side": "buy",
+            "price": 242.46126615022962,
+            "qty": 0.10310925285901104,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "-l8Mn2pVlRs-p",
+            "side": "buy",
+            "price": 3.172099499865929,
+            "qty": 7.881215580109212,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "razxDUgYGNAdQ",
+            "side": "buy",
+            "price": 4722.95018303193,
+            "qty": 0.0052933016506964475,
+            "spendUSD": 25
+          }
+        ]
+      }
+    },
+    "status": "simulated",
+    "createdAt": "2025-09-13T11:46:11.830Z"
+  },
+  {
+    "id": "log_1757763971725_8loklz",
+    "ownerAddress": "0x0000000000000000000000000000000000000000",
+    "ruleId": "rule_1756454137894_d3sxos",
+    "action": "preview_trade",
+    "details": {
+      "rule": {
+        "id": "rule_1756454137894_d3sxos",
+        "ownerAddress": "0x0000000000000000000000000000000000000000",
+        "type": "rebalance",
+        "targets": [
+          "a91GCGd_u96cF",
+          "zNZHO_Sjf",
+          "-l8Mn2pVlRs-p",
+          "razxDUgYGNAdQ"
+        ],
+        "rotateTopN": 3,
+        "maxSpendUSD": 100,
+        "maxSlippage": 0.5,
+        "trigger": {
+          "type": "trend_pct",
+          "value": 3,
+          "window": "7d"
+        },
+        "cooldownMinutes": 60,
+        "status": "active",
+        "createdAt": "2025-08-29T07:55:37.894Z"
+      },
+      "plan": {
+        "totalSpendUSD": 100,
+        "legs": [
+          {
+            "coinId": "a91GCGd_u96cF",
+            "side": "buy",
+            "price": 0.29503792252986927,
+            "qty": 84.73486996394178,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "zNZHO_Sjf",
+            "side": "buy",
+            "price": 242.46126615022962,
+            "qty": 0.10310925285901104,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "-l8Mn2pVlRs-p",
+            "side": "buy",
+            "price": 3.172099499865929,
+            "qty": 7.881215580109212,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "razxDUgYGNAdQ",
+            "side": "buy",
+            "price": 4722.95018303193,
+            "qty": 0.0052933016506964475,
+            "spendUSD": 25
+          }
+        ]
+      }
+    },
+    "status": "simulated",
+    "createdAt": "2025-09-13T11:46:11.725Z"
+  },
+  {
+    "id": "log_1757763971721_2zcuc5",
+    "ownerAddress": "0x0000000000000000000000000000000000000000",
+    "ruleId": "rule_1756454137894_d3sxos",
+    "action": "preview_trade",
+    "details": {
+      "rule": {
+        "id": "rule_1756454137894_d3sxos",
+        "ownerAddress": "0x0000000000000000000000000000000000000000",
+        "type": "rebalance",
+        "targets": [
+          "a91GCGd_u96cF",
+          "zNZHO_Sjf",
+          "-l8Mn2pVlRs-p",
+          "razxDUgYGNAdQ"
+        ],
+        "rotateTopN": 3,
+        "maxSpendUSD": 100,
+        "maxSlippage": 0.5,
+        "trigger": {
+          "type": "trend_pct",
+          "value": 3,
+          "window": "7d"
+        },
+        "cooldownMinutes": 60,
+        "status": "active",
+        "createdAt": "2025-08-29T07:55:37.894Z"
+      },
+      "plan": {
+        "totalSpendUSD": 100,
+        "legs": [
+          {
+            "coinId": "a91GCGd_u96cF",
+            "side": "buy",
+            "price": 0.29503792252986927,
+            "qty": 84.73486996394178,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "zNZHO_Sjf",
+            "side": "buy",
+            "price": 242.46126615022962,
+            "qty": 0.10310925285901104,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "-l8Mn2pVlRs-p",
+            "side": "buy",
+            "price": 3.172099499865929,
+            "qty": 7.881215580109212,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "razxDUgYGNAdQ",
+            "side": "buy",
+            "price": 4722.95018303193,
+            "qty": 0.0052933016506964475,
+            "spendUSD": 25
+          }
+        ]
+      }
+    },
+    "status": "simulated",
+    "createdAt": "2025-09-13T11:46:11.721Z"
+  },
+  {
+    "id": "log_1757763965019_wu4fqx",
+    "ownerAddress": "0x0000000000000000000000000000000000000000",
+    "ruleId": "rule_1756454137894_d3sxos",
+    "action": "preview_trade",
+    "details": {
+      "rule": {
+        "id": "rule_1756454137894_d3sxos",
+        "ownerAddress": "0x0000000000000000000000000000000000000000",
+        "type": "rebalance",
+        "targets": [
+          "a91GCGd_u96cF",
+          "zNZHO_Sjf",
+          "-l8Mn2pVlRs-p",
+          "razxDUgYGNAdQ"
+        ],
+        "rotateTopN": 3,
+        "maxSpendUSD": 100,
+        "maxSlippage": 0.5,
+        "trigger": {
+          "type": "trend_pct",
+          "value": 3,
+          "window": "7d"
+        },
+        "cooldownMinutes": 60,
+        "status": "active",
+        "createdAt": "2025-08-29T07:55:37.894Z"
+      },
+      "plan": {
+        "totalSpendUSD": 100,
+        "legs": [
+          {
+            "coinId": "a91GCGd_u96cF",
+            "side": "buy",
+            "price": 0.29503792252986927,
+            "qty": 84.73486996394178,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "zNZHO_Sjf",
+            "side": "buy",
+            "price": 242.46126615022962,
+            "qty": 0.10310925285901104,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "-l8Mn2pVlRs-p",
+            "side": "buy",
+            "price": 3.172099499865929,
+            "qty": 7.881215580109212,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "razxDUgYGNAdQ",
+            "side": "buy",
+            "price": 4722.95018303193,
+            "qty": 0.0052933016506964475,
+            "spendUSD": 25
+          }
+        ]
+      }
+    },
+    "status": "simulated",
+    "createdAt": "2025-09-13T11:46:05.019Z"
+  },
+  {
+    "id": "log_1757763964920_g19f2o",
+    "ownerAddress": "0x0000000000000000000000000000000000000000",
+    "ruleId": "rule_1756454137894_d3sxos",
+    "action": "preview_trade",
+    "details": {
+      "rule": {
+        "id": "rule_1756454137894_d3sxos",
+        "ownerAddress": "0x0000000000000000000000000000000000000000",
+        "type": "rebalance",
+        "targets": [
+          "a91GCGd_u96cF",
+          "zNZHO_Sjf",
+          "-l8Mn2pVlRs-p",
+          "razxDUgYGNAdQ"
+        ],
+        "rotateTopN": 3,
+        "maxSpendUSD": 100,
+        "maxSlippage": 0.5,
+        "trigger": {
+          "type": "trend_pct",
+          "value": 3,
+          "window": "7d"
+        },
+        "cooldownMinutes": 60,
+        "status": "active",
+        "createdAt": "2025-08-29T07:55:37.894Z"
+      },
+      "plan": {
+        "totalSpendUSD": 100,
+        "legs": [
+          {
+            "coinId": "a91GCGd_u96cF",
+            "side": "buy",
+            "price": 0.29503792252986927,
+            "qty": 84.73486996394178,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "zNZHO_Sjf",
+            "side": "buy",
+            "price": 242.46126615022962,
+            "qty": 0.10310925285901104,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "-l8Mn2pVlRs-p",
+            "side": "buy",
+            "price": 3.172099499865929,
+            "qty": 7.881215580109212,
+            "spendUSD": 25
+          },
+          {
+            "coinId": "razxDUgYGNAdQ",
+            "side": "buy",
+            "price": 4722.95018303193,
+            "qty": 0.0052933016506964475,
+            "spendUSD": 25
+          }
+        ]
+      }
+    },
+    "status": "simulated",
+    "createdAt": "2025-09-13T11:46:04.920Z"
+  },
+  {
     "id": "log_1756566059246_jyvb0j",
     "ownerAddress": "0x0000000000000000000000000000000000000000",
     "ruleId": "rule_1756456988187_aaqv2j",

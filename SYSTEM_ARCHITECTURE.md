@@ -60,7 +60,7 @@
 - **AI/ML**: LangChain + OpenAI/OpenRouter
 - **Blockchain**: viem (Ethereum library)
 - **Account Abstraction**: 0xGasless AgentKit SDK
-- **Database**: Turso (SQLite) + better-sqlite3
+- **Database**: Turso (LibSQL)
 - **Caching**: In-memory + persistent storage
 
 ### External Integrations
@@ -402,18 +402,14 @@ const intentPatterns = {
 ### Turso SQLite Configuration
 
 ```typescript
-// Database setup
-interface DatabaseConfig {
-  driver: 'turso'
-  url: 'libsql://10x-swap-anik.aws-ap-south-1.turso.io'
-  authToken: string
-  
-  // Local fallback
-  localPath: './data/db.sqlite'
-  
-  // Migration system
-  migrationsPath: './lib/db/migrations'
-  migrationSecret: string
+### Turso Database Configuration
+
+The application uses Turso (LibSQL) as the database. Configuration is handled via environment variables:
+
+```javascript
+{
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN
 }
 ```
 

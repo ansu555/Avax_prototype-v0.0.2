@@ -305,13 +305,15 @@ export function RuleBuilderModal(props: RuleBuilderModalProps) {
                       </SelectContent>
                     </Select>
                   </FormControl>
-                  <FormDescription>
-                    <ul className="list-disc ml-4 space-y-1">
-                      <li>DCA: invest fixed amounts on a schedule</li>
-                      <li>Rebalance: maintain target allocations</li>
-                      <li>Rotate Top N: shift into the top N trending coins</li>
+                  {/* Description split to avoid invalid <p><ul> nesting */}
+                  <div className="space-y-2">
+                    <FormDescription>Strategies:</FormDescription>
+                    <ul className="list-disc ml-4 space-y-1 text-sm text-muted-foreground">
+                      <li><span className="font-medium">DCA</span>: invest fixed amounts on a schedule</li>
+                      <li><span className="font-medium">Rebalance</span>: maintain target allocations</li>
+                      <li><span className="font-medium">Rotate Top N</span>: shift into the top N trending coins</li>
                     </ul>
-                  </FormDescription>
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}

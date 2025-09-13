@@ -88,13 +88,43 @@ export async function POST(req: Request) {
             const data = await (tool as any).invoke(params || {})
             return NextResponse.json({ ok: true, data })
           }
-          // Fallback: use internal 0x swap wrapper
-          const out = await agent.smartSwap({
-            tokenInSymbol: params?.tokenInSymbol,
-            tokenOutSymbol: params?.tokenOutSymbol,
-            amount: params?.amount,
-            slippage: params?.slippage,
-            wait: params?.wait ?? true,
+          // If on Fuji, prefer customSwap first
+          try {
+            const outCustom = await (agent as any).customSwap({
+              tokenInSymbol: params?.tokenInSymbol,
+              tokenOutSymbol: params?.tokenOutSymbol,
+              amount: params?.amount,
+              slippageBps: params?.slippageBps,
+              wait: params?.wait ?? true,
+            })
+            return NextResponse.json({ ok: true, data: outCustom, route: 'custom' })
+          } catch (eCustom: any) {
+            // Fallback to legacy smartSwap (non-Fuji chains or if custom not configured)
+            const out = await agent.smartSwap({
+              tokenInSymbol: params?.tokenInSymbol,
+              tokenOutSymbol: params?.tokenOutSymbol,
+              amount: params?.amount,
+              slippage: params?.slippage,
+              wait: params?.wait ?? true,
+            })
+            return NextResponse.json({ ok: true, data: out, route: 'legacy', customError: eCustom?.message })
+          }
+        } catch (e: any) {
+          return NextResponse.json({ ok: false, error: e.message }, { status: 500 })
+        }
+      }
+
+      case 'CustomSwap': {
+        try {
+          if (!params?.tokenInSymbol || !params?.tokenOutSymbol || !params?.amount) {
+            return NextResponse.json({ ok: false, error: 'tokenInSymbol, tokenOutSymbol, amount required' }, { status: 400 })
+          }
+          const out = await (agent as any).customSwap({
+            tokenInSymbol: params.tokenInSymbol,
+            tokenOutSymbol: params.tokenOutSymbol,
+            amount: params.amount,
+            slippageBps: params.slippageBps ?? 100,
+            wait: params.wait ?? true,
           })
           return NextResponse.json({ ok: true, data: out })
         } catch (e: any) {
@@ -166,7 +196,7 @@ export async function POST(req: Request) {
           ok: false, 
           error: `Unknown action: ${action}`,
           availableActions: [
-            'getMarketData',
+      'getMarketData', 'CustomSwap', 'SmartSwap',
             'getTokenPrice', 
             'getGasEstimate',
             'getTransactionHistory',
@@ -174,7 +204,7 @@ export async function POST(req: Request) {
             'getAddress',
     'getBalance',
     // 0xGasless Actions
-    'GetAddress', 'GetBalance', 'GetTokenDetails', 'SendTransaction', 'SmartSwap'
+    'GetAddress', 'GetBalance', 'GetTokenDetails', 'SendTransaction', 'SmartSwap', 'CustomSwap'
           ]
         }, { status: 400 })
     }
@@ -189,7 +219,7 @@ export async function GET() {
     ok: true,
     message: "Agent Actions API",
     availableActions: [
-      'getMarketData',
+    'getMarketData', 'CustomSwap', 'SmartSwap',
       'getTokenPrice',
       'getGasEstimate', 
       'getTransactionHistory',
@@ -197,7 +227,7 @@ export async function GET() {
       'getAddress',
   'getBalance',
   // 0xGasless Actions
-  'GetAddress', 'GetBalance', 'GetTokenDetails', 'SendTransaction', 'SmartSwap'
+  'GetAddress', 'GetBalance', 'GetTokenDetails', 'SendTransaction', 'SmartSwap', 'CustomSwap'
     ],
     usage: "POST with { action: 'actionName', params: {...} }"
   })

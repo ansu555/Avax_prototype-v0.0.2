@@ -69,13 +69,15 @@ export const tursoDriver = {
     )`)
   },
   async createRule(rule: Rule): Promise<Rule> {
-  const client = await getClient()
-  await client.execute({
+    const client = await getClient()
+    // Ensure ownerAddress stored lowercase for consistent lookups
+    const normalized: Rule = { ...rule, ownerAddress: rule.ownerAddress.toLowerCase() }
+    await client.execute({
       sql: `INSERT INTO rules (id, ownerAddress, type, targets, rotateTopN, maxSpendUSD, maxSlippage, trigger, cooldownMinutes, status, createdAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [rule.id, rule.ownerAddress, rule.type, str(rule.targets ?? []), rule.rotateTopN ?? null, rule.maxSpendUSD ?? null, rule.maxSlippage ?? null, str(rule.trigger ?? null), rule.cooldownMinutes ?? null, rule.status, rule.createdAt]
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+      args: [normalized.id, normalized.ownerAddress, normalized.type, str(normalized.targets ?? []), normalized.rotateTopN ?? null, normalized.maxSpendUSD ?? null, normalized.maxSlippage ?? null, str(normalized.trigger ?? null), normalized.cooldownMinutes ?? null, normalized.status, normalized.createdAt]
     })
-    return rule
+    return normalized
   },
   async getRules(ownerAddress?: string): Promise<Rule[]> {
   const client = await getClient()
@@ -128,9 +130,27 @@ export const tursoDriver = {
   },
   async deleteRule(id: string, ownerAddress: string): Promise<boolean> {
     const client = await getClient()
-    const res = await client.execute({ sql: `DELETE FROM rules WHERE id = ? AND ownerAddress = ?`, args: [id, ownerAddress] })
-    // libsql returns { rowsAffected } on some impls; fallback to truthy
-    const affected = (res as any)?.rowsAffected ?? (res as any)?.affectedRows ?? 0
-    return affected > 0
+    try {
+      const res = await client.execute({
+        sql: `DELETE FROM rules WHERE id = ? AND ownerAddress = ?`,
+        args: [id, ownerAddress]
+      })
+
+      let affected = res.rowsAffected || res.changes || res.affectedRows || 0
+      if (affected > 0) return true
+
+      // Fallback: legacy records might have mixed-case ownerAddress; attempt case-insensitive match
+      const sel = await client.execute({ sql: `SELECT ownerAddress FROM rules WHERE id = ?`, args: [id] })
+      const row: any = sel.rows[0]
+      if (row && typeof row.ownerAddress === 'string' && row.ownerAddress.toLowerCase() === ownerAddress.toLowerCase() && row.ownerAddress !== ownerAddress) {
+        const res2 = await client.execute({ sql: `DELETE FROM rules WHERE id = ? AND ownerAddress = ?`, args: [id, row.ownerAddress] })
+        affected = res2.rowsAffected || res2.changes || res2.affectedRows || 0
+        return affected > 0
+      }
+      return false
+    } catch (error) {
+      console.error('Turso delete error:', error)
+      return false
+    }
   },
 }

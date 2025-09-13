@@ -7,11 +7,13 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     // Basic validation and normalization
-    const ownerAddress = (body.ownerAddress || "0x0000000000000000000000000000000000000000").toString()
+  // Normalize owner address to lowercase for consistency
+  const ownerAddress = (body.ownerAddress || "0x0000000000000000000000000000000000000000").toString().toLowerCase()
     const type = (body.type || "rebalance").toString()
     const targets = Array.isArray(body.targets) ? body.targets.map(String) : []
     const trigger = body.trigger && typeof body.trigger === "object" ? body.trigger : mapTrigger(body)
-    const maxSpendUSD = Number(body.maxSpendUSD ?? 0)
+  // Accept both camel variants from frontend
+  const maxSpendUSD = Number(body.maxSpendUSD ?? body.maxSpendUsd ?? 0)
     const maxSlippage = Number(body.maxSlippage ?? 0)
     const cooldownMinutes = Number(body.cooldownMinutes ?? 0)
     if (!ownerAddress || !type) {
@@ -33,6 +35,12 @@ export async function POST(request: Request) {
       createdAt: now,
     }
 
+    if (!(typeof rule.maxSpendUSD === 'number' && rule.maxSpendUSD > 0)) {
+      return NextResponse.json({ error: 'maxSpendUSD must be > 0', code: 'INVALID_MAX_SPEND' }, { status: 400 })
+    }
+
+    console.debug('[POST /api/rules] create normalized', { id: rule.id, owner: rule.ownerAddress, maxSpendUSD: rule.maxSpendUSD, type: rule.type })
+
   await createRule(rule)
   await createLog({
       id: generateId("log"),
@@ -52,17 +60,17 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const owner = searchParams.get("owner") || undefined
-  if (!owner) {
-    const rules = await dbGetRules()
-    return NextResponse.json({ rules }, { status: 200 })
+  try {
+    const { searchParams } = new URL(request.url)
+    const ownerRaw = searchParams.get('owner')
+    const owner = ownerRaw ? ownerRaw.toLowerCase() : undefined
+    const rules = await dbGetRules(owner || undefined)
+    return NextResponse.json({ rules })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Server error'
+    console.error('GET rules error:', e)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
-  const zero = "0x0000000000000000000000000000000000000000"
-  const [mine, unassigned] = await Promise.all([dbGetRules(owner), dbGetRules(zero)])
-  // newest first
-  const rules = [...mine, ...unassigned].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-  return NextResponse.json({ rules }, { status: 200 })
 }
 
 export async function PATCH(request: Request) {
@@ -106,34 +114,49 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const id = String(searchParams.get('id') || '')
-    const owner = String(searchParams.get('owner') || '')
-    if (!id || !owner) return NextResponse.json({ error: 'Missing id or owner' }, { status: 400 })
+    const id = searchParams.get('id')
+    const ownerRaw = searchParams.get('owner')
+    if (!id || !ownerRaw) {
+      return NextResponse.json({ error: 'Missing id or owner' }, { status: 400 })
+    }
+    const owner = ownerRaw.toLowerCase()
 
+    // Fetch rule first to differentiate not found vs unauthorized
     const existing = await dbGetRuleById(id)
-    if (!existing) return NextResponse.json({ error: 'Rule not found' }, { status: 404 })
-    if (existing.ownerAddress.toLowerCase() !== owner.toLowerCase()) {
-      return NextResponse.json({ error: 'Not owner' }, { status: 403 })
+    console.debug('[DELETE /api/rules] incoming', { id, owner, exists: !!existing, existingOwner: existing?.ownerAddress })
+    if (!existing) {
+      return NextResponse.json({ error: 'Rule not found', code: 'RULE_NOT_FOUND' }, { status: 404 })
     }
 
-    const ok = await dbDeleteRule(id, owner)
-    if (!ok) return NextResponse.json({ error: 'Delete failed' }, { status: 500 })
+    if (existing.ownerAddress.toLowerCase() !== owner) {
+      console.debug('[DELETE /api/rules] ownership mismatch', { id, owner, existingOwner: existing.ownerAddress })
+      return NextResponse.json({ error: 'Not owner of rule', code: 'RULE_OWNERSHIP_MISMATCH' }, { status: 403 })
+    }
 
-    const now = new Date().toISOString()
-    await createLog({
-      id: generateId('log'),
-      ownerAddress: existing.ownerAddress,
-      ruleId: id,
-      action: 'rule_deleted',
-      details: { before: existing },
-      status: 'success',
-      createdAt: now,
-    })
-
-    return NextResponse.json({ ok: true }, { status: 200 })
+    const success = await dbDeleteRule(id, owner)
+    console.debug('[DELETE /api/rules] delete attempt', { id, owner, success })
+    if (success) {
+      try {
+        await createLog({
+          id: generateId('log'),
+          ownerAddress: existing.ownerAddress,
+          ruleId: existing.id,
+          action: 'rule_deleted',
+          details: { id: existing.id },
+          status: 'success',
+          createdAt: new Date().toISOString(),
+        })
+      } catch (e) {
+        console.warn('Failed to log rule_deleted', e)
+      }
+      return NextResponse.json({ success: true, id })
+    }
+    // If we get here something odd happened (race condition)
+    return NextResponse.json({ error: 'Delete failed', code: 'RULE_DELETE_FAILED' }, { status: 500 })
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'Invalid request'
-    return NextResponse.json({ error: msg }, { status: 400 })
+    const msg = e instanceof Error ? e.message : 'Server error'
+    console.error('DELETE rule error:', e)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
 

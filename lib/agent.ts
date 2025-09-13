@@ -5,6 +5,7 @@ import type { Address, Chain } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { Agentkit } from '@0xgasless/agentkit'
 import { resolveTokenBySymbol } from './tokens'
+import { customSwapFlow } from './customSwap'
 
 
 // Minimal helper to read required envs and ensure they are present
@@ -689,6 +690,30 @@ async function buildAgent(chainIdOverride?: number) {
       }
     }
 
+    // Custom swap (Fuji-focused) using our placeholder router wrapper.
+    async function customSwap(opts: { tokenInSymbol: string; tokenOutSymbol: string; amount: string; slippageBps?: number; wait?: boolean }): Promise<{ hash: string; details: any }> {
+      try {
+        const sa = (agentkit as any)?.smartAccount
+        if (!sa) throw new Error('Smart account not available for custom swap')
+        const accountAddress = await getAddress()
+        const result = await customSwapFlow({
+          chainId: chain.id,
+          publicClient,
+          smartAccount: sa,
+          accountAddress,
+        }, {
+          tokenInSymbol: opts.tokenInSymbol.toUpperCase(),
+            tokenOutSymbol: opts.tokenOutSymbol.toUpperCase(),
+          amount: opts.amount,
+          slippageBps: opts.slippageBps ?? 100,
+          wait: opts.wait ?? true,
+        })
+        return result as any
+      } catch (e: any) {
+        throw new Error(`customSwap failed: ${e?.message || e}`)
+      }
+    }
+
     // Fallback mapping for popular symbols not in Base token registry
     const COINGECKO_FALLBACK: Record<string, string> = {
       BTC: 'bitcoin',
@@ -748,12 +773,7 @@ async function buildAgent(chainIdOverride?: number) {
           const data = await res.json()
           return { symbol: 'AVAX', price: data['avalanche-2'].usd, change24h: data['avalanche-2'].usd_24h_change }
         }
-        if (token && token.address === 'ETH') {
-          const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_24hr_change=true')
-          if (!res.ok) throw new Error(`Failed to fetch ETH price: ${res.status}`)
-          const data = await res.json()
-          return { symbol: 'ETH', price: data['ethereum'].usd, change24h: data['ethereum'].usd_24h_change }
-        }
+        // ETH branch removed for current Fuji-only scope; reintroduce when multi-chain support returns.
         // Known Base token with coingeckoId
         if (token && token.coingeckoId) {
           const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${token.coingeckoId}&vs_currencies=usd&include_24hr_change=true`)
@@ -904,8 +924,9 @@ async function buildAgent(chainIdOverride?: number) {
       readContract,
       smartTransfer,
       smartTransferAdvanced,
-      smartTransferWithRouting,
-      smartSwap,
+    smartTransferWithRouting,
+    smartSwap,
+    customSwap,
       getMarketData,
       getTokenPrice,
       getGasEstimate,
@@ -942,6 +963,7 @@ export const AVAILABLE_AGENT_ACTIONS = [
   'smartTransferAdvanced',
   'smartTransferWithRouting',
   'smartSwap',
+  'customSwap',
   'getMarketData',
   'getTokenPrice',
   'getGasEstimate',

@@ -41,10 +41,21 @@ export function useAgentData(owner?: string) {
   }
 
   const lastRunByRule = useMemo(() => {
-    const map = new Map<string, Log>()
+    // Build arrays per ruleId
+    const buckets = new Map<string, Log[]>()
     for (const log of logs) {
       if (!log.ruleId) continue
-      if (!map.has(log.ruleId)) map.set(log.ruleId, log)
+      let arr = buckets.get(log.ruleId)
+      if (!arr) { arr = []; buckets.set(log.ruleId, arr) }
+      arr.push(log)
+    }
+    const map = new Map<string, Log>()
+    for (const [ruleId, arr] of buckets) {
+      // Prefer execute_rule logs (success or failed)
+      const execs = arr.filter(l => l.action === 'execute_rule')
+      const chosen = (execs.length ? execs : arr)
+        .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+      if (chosen) map.set(ruleId, chosen)
     }
     return map
   }, [logs])

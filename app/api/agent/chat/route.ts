@@ -53,7 +53,7 @@ export async function POST(req: Request) {
     if (!incoming.length) return NextResponse.json({ ok: false, error: "No prompt or messages provided" }, { status: 400 })
 
   const chainOverride = typeof body.chainId === 'number' ? body.chainId : undefined
-  const { agentkit, getAddress, getBalance, smartTransfer, smartSwap } = await getAgent(chainOverride)
+  const { agentkit, getAddress, getBalance, smartTransfer, smartSwap, customSwap } = await getAgent(chainOverride)
     const toolkit = new AgentkitToolkit(agentkit as any)
     const tools = toolkit.getTools()
 
@@ -156,7 +156,7 @@ export async function POST(req: Request) {
           const { getChainInfo } = await getAgent(chainOverride)
           const info = await getChainInfo()
           const token = resolveTokenBySymbol(symMatch[1], info.chainId)
-          if (token && token.address !== 'ETH' && token.address !== 'AVAX') {
+          if (token && token.address !== 'AVAX') {
             const bal = await getBalance(token.address as any, addrCtx.target as any)
             const formattedBal = parseFloat(bal).toFixed(4)
             try {
@@ -289,7 +289,7 @@ export async function POST(req: Request) {
           const info = await getChainInfo()
           const token = resolveTokenBySymbol(symbol, info.chainId)
           if (!token) return `Unknown token symbol: ${symbol}`
-          const { hash } = await smartTransfer({ tokenAddress: token.address === 'ETH' ? undefined : (token.address as any), amount, destination: to, wait: true })
+          const { hash } = await smartTransfer({ tokenAddress: token.address === 'AVAX' ? undefined : (token.address as any), amount, destination: to, wait: true })
           return `Transfer submitted. Tx hash: ${hash}`
         } else {
           const { hash } = await smartTransfer({ amount, destination: to, wait: true })
@@ -318,7 +318,7 @@ export async function POST(req: Request) {
               transfers.push({
                 destination: destination as `0x${string}`,
                 amount,
-                tokenAddress: token && (token.address === 'ETH' || token.address === 'AVAX') ? undefined : (token?.address as any)
+                tokenAddress: token && token.address === 'AVAX' ? undefined : (token?.address as any)
               })
             }
           }
@@ -358,14 +358,14 @@ export async function POST(req: Request) {
           
           const { smartTransferAdvanced } = await getAgent()
           const result = await smartTransferAdvanced({
-            tokenAddress: token && (token.address === 'ETH' || token.address === 'AVAX') ? undefined : (token?.address as any),
+            tokenAddress: token && token.address === 'AVAX' ? undefined : (token?.address as any),
             amount,
             destination: destination as `0x${string}`,
             schedule: scheduleDate,
             priority: 'normal'
           })
           
-          return `Scheduled transfer set for ${scheduleDate.toLocaleString()}. Amount: ${amount} ${symbol || 'ETH'} to ${destination.slice(0, 8)}...`
+          return `Scheduled transfer set for ${scheduleDate.toLocaleString()}. Amount: ${amount} ${symbol || 'AVAX'} to ${destination.slice(0, 8)}...`
         } catch (e: any) {
           return `Scheduled transfer failed: ${e.message}`
         }
@@ -387,7 +387,7 @@ export async function POST(req: Request) {
           
           const { smartTransferWithRouting } = await getAgent()
           const result = await smartTransferWithRouting({
-            tokenAddress: token && (token.address === 'ETH' || token.address === 'AVAX') ? undefined : (token?.address as any),
+            tokenAddress: token && token.address === 'AVAX' ? undefined : (token?.address as any),
             amount,
             destination: destination as `0x${string}`,
             routing,
@@ -412,7 +412,7 @@ export async function POST(req: Request) {
           
           const { smartTransferAdvanced } = await getAgent()
           const result = await smartTransferAdvanced({
-            tokenAddress: token?.address === 'ETH' ? undefined : (token?.address as any),
+            tokenAddress: token?.address === 'AVAX' ? undefined : (token?.address as any),
             amount,
             destination: destination as `0x${string}`,
             autoSwap: true, // Enable auto-swap for insufficient balance
@@ -432,8 +432,19 @@ export async function POST(req: Request) {
         const amount = sw[1]
         const fromSym = sw[2]
         const toSym = sw[3]
-        const out = await smartSwap({ tokenInSymbol: fromSym.toUpperCase(), tokenOutSymbol: toSym.toUpperCase(), amount, slippage: 0.5, wait: true })
-        return `Swap submitted. Tx hash: ${out.hash}`
+        // Try custom swap first (Fuji). Fallback to legacy smartSwap if custom fails for non-Fuji chains or config issues.
+        try {
+          const custom = await customSwap({ tokenInSymbol: fromSym, tokenOutSymbol: toSym, amount, slippageBps: 100, wait: true })
+          return `Custom swap submitted. Tx hash: ${custom.hash}`
+        } catch (e: any) {
+          // Attempt legacy aggregator swap if available
+          try {
+            const legacy = await smartSwap({ tokenInSymbol: fromSym.toUpperCase(), tokenOutSymbol: toSym.toUpperCase(), amount, slippage: 0.5, wait: true })
+            return `Legacy swap submitted. Tx hash: ${legacy.hash}`
+          } catch (e2: any) {
+            return `Swap failed. Custom error: ${e?.message || e}. Legacy error: ${e2?.message || e2}`
+          }
+        }
       }
 
       return null

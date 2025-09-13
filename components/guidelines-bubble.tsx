@@ -2,15 +2,15 @@
 import React, { useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { BookOpen, X } from "lucide-react"
-import { FUJI_SYMBOL_TO_TOKEN, BASE_SYMBOL_TO_TOKEN, AVALANCHE_SYMBOL_TO_TOKEN } from "@/lib/tokens"
+import { FUJI_SYMBOL_TO_TOKEN } from "@/lib/tokens"
 import { useChainId } from "wagmi"
 
 export default function GuidelinesBubble() {
   const [open, setOpen] = useState(false)
   const chainId = useChainId() || 43113
-  const chainLabel = chainId === 8453 ? 'Base' : (chainId === 43114 ? 'Avalanche' : 'Avalanche Fuji')
-  const nativeSymbol = (chainId === 43113 || chainId === 43114) ? 'AVAX' : 'ETH'
-  const TOKENS = chainId === 8453 ? BASE_SYMBOL_TO_TOKEN : (chainId === 43114 ? AVALANCHE_SYMBOL_TO_TOKEN : FUJI_SYMBOL_TO_TOKEN)
+  const chainLabel = 'Avalanche Fuji'
+  const nativeSymbol = 'AVAX'
+  const TOKENS = FUJI_SYMBOL_TO_TOKEN
   // Dynamically list all known tokens for the selected chain
   const SUPPORTED: string[] = Object.keys(TOKENS || {})
 
@@ -56,7 +56,7 @@ export default function GuidelinesBubble() {
                 <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
                   {SUPPORTED.map((sym) => {
                     const t = TOKENS[sym]
-                    const addr = t?.address === "AVAX" || t?.address === "ETH" ? "native" : t?.address
+                    const addr = t?.address === "AVAX" ? "native" : t?.address
                     return (
                       <li key={sym} className="flex justify-between">
                         <span className="font-medium">{sym}</span>

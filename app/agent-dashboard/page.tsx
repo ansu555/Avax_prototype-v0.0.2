@@ -11,7 +11,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { formatTrigger, type Rule } from "@/lib/shared/rules"
 import { forceRunPoller, useAgentData } from "@/features/agent/hooks/useAgentData"
 import { deleteRule as apiDeleteRule } from "@/features/agent/api/client"
-import { resolveTokenByCoinrankingId } from "@/lib/tokens"
+// resolveTokenByCoinrankingId removed (returns null); using symbol mapping only
 import { ChevronDown, ChevronUp } from "lucide-react"
 
 export default function AgentDashboardPage() {
@@ -24,11 +24,11 @@ export default function AgentDashboardPage() {
   useEffect(() => {
     if (!rules.length) return
     const ids = new Set<string>()
-    for (const r of rules) for (const id of r.targets) ids.add(id)
+  for (const r of rules) for (const id of r.targets) ids.add(id)
 
     const missing: string[] = []
     ids.forEach((id) => {
-      const known = symbolById[id] || resolveTokenByCoinrankingId(id)?.symbol
+  const known = symbolById[id]
       if (!known) missing.push(id)
     })
     if (missing.length === 0) return
@@ -132,18 +132,27 @@ export default function AgentDashboardPage() {
   }
 
   async function onDelete(rule: Rule) {
-    if (!address) return
-    const ok = await apiDeleteRule(rule.id, address)
-    if (ok) {
-      toast({ title: 'Rule deleted' })
-      refresh()
-    } else {
-      toast({ title: 'Delete failed', variant: 'destructive' })
+    if (!address) {
+      toast({ title: 'No wallet connected', variant: 'destructive' })
+      return
+    }
+    
+    try {
+      const ok = await apiDeleteRule(rule.id, address)
+      if (ok) {
+        toast({ title: 'Rule deleted' })
+        refresh()
+      } else {
+        toast({ title: 'Delete failed', variant: 'destructive' })
+      }
+    } catch (error: any) {
+      console.error('Delete error:', error)
+      toast({ title: 'Delete failed', description: error.message, variant: 'destructive' })
     }
   }
 
   function renderTargets(ids: string[]) {
-  const labels = ids.map((id) => symbolById[id] || resolveTokenByCoinrankingId(id)?.symbol || id)
+  const labels = ids.map((id) => symbolById[id] || id)
     const first = labels.slice(0, 3).join(", ")
     return (
       <>
@@ -223,7 +232,11 @@ export default function AgentDashboardPage() {
                         ${r.maxSpendUSD} • slip {r.maxSlippage}%
                       </TableCell>
                       <TableCell className="text-xs">
-                        {last ? new Date(last.createdAt).toLocaleString() : `—`}
+                        {last ? (
+                          new Date(last.createdAt).toLocaleString()
+                        ) : (
+                          <span title="No executions yet">Never</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-xs">{nextCheck(r)}</TableCell>
                       <TableCell className="flex gap-2">

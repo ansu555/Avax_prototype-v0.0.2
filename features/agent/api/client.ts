@@ -2,14 +2,14 @@
 import type { Log, Rule } from '@/lib/shared/rules'
 
 export async function fetchRules(owner: string): Promise<Rule[]> {
-  const res = await fetch(`/api/rules?owner=${owner}`, { cache: 'no-store' })
+  const res = await fetch(`/api/rules?owner=${owner.toLowerCase()}`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const json = await res.json()
   return json.rules ?? []
 }
 
 export async function fetchLogs(owner: string): Promise<Log[]> {
-  const res = await fetch(`/api/logs?owner=${owner}`, { cache: 'no-store' })
+  const res = await fetch(`/api/logs?owner=${owner.toLowerCase()}`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const json = await res.json()
   return json.logs ?? []
@@ -35,8 +35,25 @@ export async function runPoller(): Promise<{ triggered: any[] }> {
 }
 
 export async function deleteRule(id: string, owner: string): Promise<boolean> {
-  const res = await fetch(`/api/rules?id=${encodeURIComponent(id)}&owner=${encodeURIComponent(owner)}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const lowerOwner = owner.toLowerCase()
+  const url = `/api/rules?id=${encodeURIComponent(id)}&owner=${encodeURIComponent(lowerOwner)}`
+  const res = await fetch(url, { method: 'DELETE' })
+
+  if (res.status === 404) {
+    // Treat missing as already deleted (idempotent)
+    return true
+  }
+
+  if (res.status === 403) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Not owner of rule (403). Rule id=${id} owner=${lowerOwner}. Server: ${body}`)
+  }
+
+  if (!res.ok) {
+    const responseText = await res.text().catch(() => 'Unknown error')
+    throw new Error(`Delete failed HTTP ${res.status}: ${responseText}`)
+  }
+
   const json = await res.json()
-  return !!json.ok
+  return json.success === true
 }
