@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     const amountInUnits = parseUnits(amount, tokenIn.decimals)
     
     // Discover all routes up to depth 3
-    const allRoutes = discoverRoutes(tokenIn, tokenOut, 3)
+    const allRoutes = await discoverRoutes(tokenIn, tokenOut, 3)
     const quotedRoutes = []
 
     // Setup on-chain client
@@ -58,12 +58,12 @@ export async function GET(request: NextRequest) {
           amountOut = amounts[amounts.length - 1]
         } catch (e) {
           // fallback to local math if on-chain fails
-          const quote = quoteRoute(route, amountInUnits)
+          const quote = await quoteRoute(route, amountInUnits)
           amountOut = quote ? quote.amountOut : null
         }
       } else {
         // For multi-hop, use local math
-        const quote = quoteRoute(route, amountInUnits)
+        const quote = await quoteRoute(route, amountInUnits)
         amountOut = quote ? quote.amountOut : null
         priceImpactBps = quote ? quote.cumulativePriceImpactBps : null
       }
@@ -140,11 +140,11 @@ export async function POST(request: NextRequest) {
     }
 
     const amountInUnits = parseUnits(amount, tokenInResolved.decimals)
-    const allRoutes = discoverRoutes(tokenInResolved, tokenOutResolved, 3)
+    const allRoutes = await discoverRoutes(tokenInResolved, tokenOutResolved, 3)
     const quotedRoutes = []
 
     for (const route of allRoutes) {
-      const quote = quoteRoute(route, amountInUnits)
+      const quote = await quoteRoute(route, amountInUnits)
       if (!quote) continue
 
       const minOut = (quote.amountOut * BigInt(10000 - slippage)) / BigInt(10000)

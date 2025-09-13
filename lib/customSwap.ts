@@ -11,11 +11,11 @@ import { logSwapEvent } from './log'
  * Reconstruct route from routeId (base64 encoded pool addresses).
  * Returns the Route object or null if routeId is invalid or pools don't exist.
  */
-export function reconstructRouteFromId(
+export async function reconstructRouteFromId(
   tokenIn: string, 
   tokenOut: string, 
   routeId: string
-): Route | null {
+): Promise<Route | null> {
   try {
     // Decode base64 routeId to get pool addresses
     const poolAddresses = Buffer.from(routeId, 'base64').toString('utf-8')
@@ -24,7 +24,9 @@ export function reconstructRouteFromId(
     if (!poolIds.length) return null
     
     // Get pools by ID
-    const pools = poolIds.map(id => getPoolById(id)).filter(Boolean) as Pool[]
+    const poolPromises = poolIds.map(id => getPoolById(id))
+    const poolResults = await Promise.all(poolPromises)
+    const pools = poolResults.filter(Boolean) as Pool[]
     if (pools.length !== poolIds.length) {
       // Some pools not found
       return null
@@ -109,7 +111,7 @@ export async function simulateCustomSwap(
         throw wrapUnknown('SIMULATION_FAILED', 'On-chain direct quote failed', e)
       }
     } else {
-    const reconstructedRoute = reconstructRouteFromId(
+    const reconstructedRoute = await reconstructRouteFromId(
       params.tokenInSymbol, 
       params.tokenOutSymbol, 
       params.routeId
@@ -121,7 +123,7 @@ export async function simulateCustomSwap(
       })
     }
     
-    const routeQuote = quoteRoute(reconstructedRoute, amountInUnits)
+    const routeQuote = await quoteRoute(reconstructedRoute, amountInUnits)
     if (!routeQuote) {
       throw new CustomSwapError('ROUTE_QUOTE_FAILED', 'Failed to quote specified route', { 
         data: { routeId: params.routeId } 
@@ -136,7 +138,7 @@ export async function simulateCustomSwap(
   } else {
     // Auto-select best route (existing logic)
     // 1. Try multi-hop best route (up to depth 3)
-    const bestRoute = findBestRouteQuote(tokenIn, tokenOut, amountInUnits, 3)
+    const bestRoute = await findBestRouteQuote(tokenIn, tokenOut, amountInUnits, 3)
     if (bestRoute) {
       expectedOutUnits = bestRoute.amountOut
       priceImpactBps = bestRoute.cumulativePriceImpactBps
@@ -144,7 +146,7 @@ export async function simulateCustomSwap(
       routeData = bestRoute.route
     } else {
       // 2. Fallback: direct single-hop quote (legacy helper)
-      const localQuote = quoteBest(tokenIn, tokenOut, amountInUnits)
+      const localQuote = await quoteBest(tokenIn, tokenOut, amountInUnits)
       if (localQuote) {
         expectedOutUnits = localQuote.amountOut
         priceImpactBps = localQuote.priceImpactBps
