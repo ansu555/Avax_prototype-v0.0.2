@@ -16,7 +16,8 @@ export type TokenInfo = {
 //  - WETH.e (Bridged WETH): 0x12162c3E810393dEC01362aBf156D7ecf6159528
 //  - USDT.e (Bridged USDT): 0xA27f39E9C21b3376e1DA169e90e2DbA0C2e88d7b
 // These may change; always confirm via Avalanche docs / explorer. Do NOT assume liquidity exists.
-export const FUJI_SYMBOL_TO_TOKEN: Record<string, TokenInfo> = {
+// Static Fuji tokens
+const staticTokens: Record<string, TokenInfo> = {
   AVAX:  { symbol: 'AVAX',  address: 'AVAX', decimals: 18, coingeckoId: 'avalanche-2' },
   WAVAX: { symbol: 'WAVAX', address: '0xd00ae08403B9bbb9124bB305C09058E32C39A48c', decimals: 18, coingeckoId: 'avalanche-2' },
   USDC:  { symbol: 'USDC',  address: '0x5425890298aed601595a70AB815c96711a31Bc65', decimals: 6, coingeckoId: 'usd-coin' },
@@ -25,6 +26,26 @@ export const FUJI_SYMBOL_TO_TOKEN: Record<string, TokenInfo> = {
   'WETH.E':  { symbol: 'WETH.e', address: '0x12162c3E810393dEC01362aBf156D7ecf6159528', decimals: 18, coingeckoId: 'weth' },
   USDT:  { symbol: 'USDT.e', address: '0xA27f39E9C21b3376e1DA169e90e2DbA0C2e88d7b', decimals: 6, coingeckoId: 'tether' },
   'USDT.E':  { symbol: 'USDT.e', address: '0xA27f39E9C21b3376e1DA169e90e2DbA0C2e88d7b', decimals: 6, coingeckoId: 'tether' },
+}
+
+// Dynamic custom tokens from env
+function getCustomEnvTokens(): Record<string, TokenInfo> {
+  const out: Record<string, TokenInfo> = {}
+  if (process.env.NEXT_PUBLIC_TOKEN_A) {
+    out.TKA = { symbol: 'TKA', address: process.env.NEXT_PUBLIC_TOKEN_A as Address, decimals: 18 }
+  }
+  if (process.env.NEXT_PUBLIC_TOKEN_B) {
+    out.TKB = { symbol: 'TKB', address: process.env.NEXT_PUBLIC_TOKEN_B as Address, decimals: 18 }
+  }
+  if (process.env.NEXT_PUBLIC_TOKEN_C) {
+    out.TKC = { symbol: 'TKC', address: process.env.NEXT_PUBLIC_TOKEN_C as Address, decimals: 18 }
+  }
+  return out
+}
+
+export const FUJI_SYMBOL_TO_TOKEN: Record<string, TokenInfo> = {
+  ...staticTokens,
+  ...getCustomEnvTokens()
 }
 
 export function resolveTokenBySymbol(symbol?: string, chainId?: number): TokenInfo | null {

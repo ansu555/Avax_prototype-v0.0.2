@@ -50,7 +50,6 @@ export function reconstructRouteFromId(
         // Pool doesn't connect to current token - invalid route
         return null
       }
-      
       tokens.push(nextToken)
       currentToken = nextToken
     }
@@ -94,6 +93,22 @@ export async function simulateCustomSwap(
 
   // Check if specific route ID is provided
   if (params.routeId) {
+    if (params.routeId.startsWith('ONCHAIN:')) {
+      // Force direct on-chain quote ignoring local pools
+      try {
+        const path = [tokenIn.address, tokenOut.address]
+        const amounts = await ctx.publicClient.readContract({
+          address: routerAddress,
+          abi: RouterAbi as any,
+          functionName: 'getAmountsOut',
+          args: [amountInUnits, path]
+        }) as bigint[]
+        expectedOutUnits = amounts[amounts.length - 1]
+        routeKind = 'ONCHAIN_DIRECT'
+      } catch (e: any) {
+        throw wrapUnknown('SIMULATION_FAILED', 'On-chain direct quote failed', e)
+      }
+    } else {
     const reconstructedRoute = reconstructRouteFromId(
       params.tokenInSymbol, 
       params.tokenOutSymbol, 
@@ -117,6 +132,7 @@ export async function simulateCustomSwap(
     priceImpactBps = routeQuote.cumulativePriceImpactBps
     routeKind = reconstructedRoute.pools.length === 1 ? 'DIRECT' : 'MULTI_HOP'
     routeData = reconstructedRoute
+    }
   } else {
     // Auto-select best route (existing logic)
     // 1. Try multi-hop best route (up to depth 3)
@@ -170,12 +186,7 @@ export async function simulateCustomSwap(
   }
 }
 
-/**
- * Placeholder ABI for future custom router. Replace when contract deployed.
- */
-export const CUSTOM_SWAP_ABI = [
-  // Placeholder retained for future custom aggregator router; currently unused for simulation.
-] as const
+// (Removed unused CUSTOM_SWAP_ABI placeholder; Router ABI is used directly.)
 
 export interface CustomSwapParams {
   tokenInSymbol: string
@@ -272,10 +283,11 @@ export async function executeCustomSwap(
   const minOutUnits = BigInt(simulation.minOut)
 
   // If tokenIn is ERC20 (not AVAX sentinel), ensure allowance to (future) router or target contract
-  const routerAddress = (process.env.CUSTOM_SWAP_ROUTER || '').trim() as Address | ''
+  // Allow server to fall back to NEXT_PUBLIC_AMM_ROUTER (set for frontend) if CUSTOM_SWAP_ROUTER is not provided
+  const routerAddress = (process.env.CUSTOM_SWAP_ROUTER || process.env.NEXT_PUBLIC_AMM_ROUTER || '').trim() as Address | ''
   if (!routerAddress) {
     logSwapEvent('swap.error', { code: 'ROUTER_NOT_CONFIGURED', params })
-    throw new CustomSwapError('ROUTER_NOT_CONFIGURED', 'CUSTOM_SWAP_ROUTER not set. Deploy router and set env variable.')
+    throw new CustomSwapError('ROUTER_NOT_CONFIGURED', 'CUSTOM_SWAP_ROUTER or NEXT_PUBLIC_AMM_ROUTER not set. Deploy router and set env variable.')
   }
 
   if (tokenIn.address !== 'AVAX') {
@@ -335,25 +347,21 @@ export async function executeCustomSwap(
   // integration with a service (e.g., Flashbots-style relay for supported chains).
   const privateTx = !!params.privateTx
   
-  // Build hop addresses from route (pool addresses for multi-hop, empty for direct)
-  const hops: Address[] = simulation.route.pools ? 
-    simulation.route.pools.map(poolId => {
-      const pool = getPoolById(poolId)
-      return pool ? pool.id as Address : '0x0000000000000000000000000000000000000000' as Address
-    }) : []
+  // Build direct path (extend later for multi-hop). AVAX sentinel converted to zero address placeholder if needed.
+  const path: Address[] = [
+    tokenIn.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenIn.address as Address,
+    tokenOut.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenOut.address as Address
+  ]
 
   const txWriteArgs: any = {
     address: routerAddress,
-    abi: CUSTOM_SWAP_ABI as any,
-    functionName: 'swapExactIn',
+    abi: RouterAbi as any,
+    functionName: 'swapExactTokensForTokens',
     args: [
-      tokenIn.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenIn.address,
-      tokenOut.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenOut.address,
       amountInUnits,
       minOutUnits,
-      params.recipient || ctx.accountAddress,
-      deadline,
-      hops
+      path,
+      params.recipient || ctx.accountAddress
     ]
   }
   

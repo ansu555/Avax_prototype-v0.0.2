@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { parseUnits } from 'viem'
+import { parseUnits, createPublicClient, http } from 'viem'
+import { avalancheFuji } from 'viem/chains'
 import { resolveTokenBySymbol } from '../../../../lib/tokens'
-import { findBestRouteQuote } from '../../../../lib/routing/paths'
 import { discoverRoutes, quoteRoute, type Route } from '../../../../lib/routing/paths'
+import RouterAbi from '@/app/abis/Router.json'
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,26 +37,48 @@ export async function GET(request: NextRequest) {
     const allRoutes = discoverRoutes(tokenIn, tokenOut, 3)
     const quotedRoutes = []
 
-    for (const route of allRoutes) {
-      const quote = quoteRoute(route, amountInUnits)
-      if (!quote) continue
+    // Setup on-chain client
+    const rpcUrl = process.env.RPC_URL_FUJI || process.env.RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'
+    const routerAddress = process.env.CUSTOM_SWAP_ROUTER || process.env.NEXT_PUBLIC_AMM_ROUTER || ''
+  const publicClient = createPublicClient({ chain: avalancheFuji, transport: http(rpcUrl) })
 
-      const minOut = (quote.amountOut * BigInt(10000 - slippageBps)) / BigInt(10000)
-      
-      // Basic gas estimation: assume 150k gas per hop + base
+    for (const route of allRoutes) {
+      let amountOut: bigint | null = null
+      let priceImpactBps: number | null = null
+      // For direct routes, use on-chain getAmountsOut
+      if (route.pools.length === 1 && routerAddress) {
+        try {
+          const path = route.tokens.map(t => t.address)
+          const amounts = await publicClient.readContract({
+            address: routerAddress as `0x${string}`,
+            abi: RouterAbi as any,
+            functionName: 'getAmountsOut',
+            args: [amountInUnits, path]
+          }) as bigint[]
+          amountOut = amounts[amounts.length - 1]
+        } catch (e) {
+          // fallback to local math if on-chain fails
+          const quote = quoteRoute(route, amountInUnits)
+          amountOut = quote ? quote.amountOut : null
+        }
+      } else {
+        // For multi-hop, use local math
+        const quote = quoteRoute(route, amountInUnits)
+        amountOut = quote ? quote.amountOut : null
+        priceImpactBps = quote ? quote.cumulativePriceImpactBps : null
+      }
+      if (!amountOut) continue
+      const minOut = (amountOut * BigInt(10000 - slippageBps)) / BigInt(10000)
       const estimatedGas = 100000 + (route.pools.length * 150000)
-      
-      // Generate route ID (simple hash of pool addresses)
       const poolAddresses = route.pools.map((p: any) => p.id).join('-')
       const routeId = Buffer.from(poolAddresses).toString('base64').slice(0, 16)
-
       quotedRoutes.push({
         routeId,
         tokenSymbols: route.tokens.map((t: any) => t.symbol),
         poolIds: route.pools.map((p: any) => p.id),
-        amountOut: quote.amountOut.toString(),
+        amountOut: amountOut.toString(),
         minOut: minOut.toString(),
-        priceImpactBps: quote.cumulativePriceImpactBps,
+        priceImpactBps,
         estimatedGas,
         kind: route.pools.length === 1 ? 'DIRECT' : 'MULTI_HOP'
       })

@@ -6,8 +6,17 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { RouteDisplay, type QuoteResponse, type RouteQuote } from './route-display'
 import { resolveTokenBySymbol } from '@/lib/tokens'
+import { getAmountsOut } from '@/lib/amm/routerClient'
+import { getAmmAddresses } from '@/lib/amm/config'
 
-const SUPPORTED_TOKENS = ['WAVAX', 'USDC', 'WETH.e', 'USDT.e']
+import { FUJI_SYMBOL_TO_TOKEN } from '@/lib/tokens'
+
+// Build supported tokens list dynamically from registry
+const SUPPORTED_TOKENS = React.useMemo(() => {
+  const base = ['WAVAX', 'USDC', 'WETH.e', 'USDT.e']
+  const custom = Object.keys(FUJI_SYMBOL_TO_TOKEN).filter(s => ['TKA','TKB','TKC'].includes(s))
+  return [...base, ...custom]
+}, [])
 
 export const SwapInterface: React.FC = () => {
   const [tokenIn, setTokenIn] = useState('WAVAX')
@@ -25,8 +34,44 @@ export const SwapInterface: React.FC = () => {
 
     setIsLoading(true)
     setError(null)
-    
     try {
+      // Try client-side on-chain direct quote first for faster feedback
+      const tIn = resolveTokenBySymbol(tokenIn)
+      const tOut = resolveTokenBySymbol(tokenOut)
+      const routerAddr = getAmmAddresses().router
+      if (tIn && tOut && tIn.address !== 'AVAX' && tOut.address !== 'AVAX' && routerAddr) {
+        try {
+          const onchain = await getAmountsOut(amount, [tIn.address as string, tOut.address as string])
+          const route = {
+            routeId: 'ONCHAIN:direct',
+            tokenSymbols: [tIn.symbol, tOut.symbol],
+            poolIds: [],
+            amountOut: onchain.amounts[onchain.amounts.length - 1].toString(),
+            minOut: onchain.amounts[onchain.amounts.length - 1].toString(),
+            priceImpactBps: null,
+            estimatedGas: 100000,
+            kind: 'DIRECT' as const
+          }
+          const payload = {
+            tokenIn,
+            tokenOut,
+            amountIn: amount,
+            slippageBps: slippage,
+            routes: [route],
+            bestRoute: route,
+            timestamp: Date.now()
+          }
+          setQuote(payload as unknown as QuoteResponse)
+          setSelectedRouteId(undefined)
+          setIsLoading(false)
+          return
+        } catch (e) {
+          // fallthrough to server quote
+          console.debug('On-chain quote failed, falling back to API', e)
+        }
+      }
+
+      // Fallback: server-side quote (may combine local & on-chain logic)
       const response = await fetch('/api/swap/quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
