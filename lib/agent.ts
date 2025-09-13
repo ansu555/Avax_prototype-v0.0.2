@@ -690,25 +690,100 @@ async function buildAgent(chainIdOverride?: number) {
       }
     }
 
-    // Custom swap (Fuji-focused) using our placeholder router wrapper.
+    // Custom swap (Fuji-focused) using our proven working approach.
     async function customSwap(opts: { tokenInSymbol: string; tokenOutSymbol: string; amount: string; slippageBps?: number; wait?: boolean }): Promise<{ hash: string; details: any }> {
       try {
-        const sa = (agentkit as any)?.smartAccount
-        if (!sa) throw new Error('Smart account not available for custom swap')
-        const accountAddress = await getAddress()
-        const result = await customSwapFlow({
-          chainId: chain.id,
-          publicClient,
-          smartAccount: sa,
-          accountAddress,
-        }, {
-          tokenInSymbol: opts.tokenInSymbol.toUpperCase(),
-            tokenOutSymbol: opts.tokenOutSymbol.toUpperCase(),
-          amount: opts.amount,
-          slippageBps: opts.slippageBps ?? 100,
-          wait: opts.wait ?? true,
+        // Use the exact same approach as the working direct API
+        const { createPublicClient, createWalletClient, http, parseEther, formatEther, getContract } = await import('viem')
+        const { privateKeyToAccount } = await import('viem/accounts')
+        const { avalancheFuji } = await import('viem/chains')
+        
+        const account = privateKeyToAccount(`0x${process.env.PRIVATE_KEY}`)
+        
+        const publicClient = createPublicClient({
+          chain: avalancheFuji,
+          transport: http(process.env.NEXT_PUBLIC_RPC_URL_FUJI)
         })
-        return result as any
+
+        const walletClient = createWalletClient({
+          account,
+          chain: avalancheFuji,
+          transport: http(process.env.NEXT_PUBLIC_RPC_URL_FUJI)
+        })
+
+        const routerAddress = process.env.NEXT_PUBLIC_AMM_ROUTER as `0x${string}`
+        const tokenA = process.env.NEXT_PUBLIC_TOKEN_A as `0x${string}` // WAVAX
+        const tokenB = process.env.NEXT_PUBLIC_TOKEN_B as `0x${string}` // USDC
+
+        // Simple token mapping
+        const tokenIn = opts.tokenInSymbol === 'WAVAX' ? tokenA : tokenB
+        const tokenOut = opts.tokenOutSymbol === 'USDC' ? tokenB : tokenA
+
+        const ROUTER_ABI = [
+          {
+            "inputs": [
+              {"type": "uint256", "name": "amountIn"},
+              {"type": "uint256", "name": "amountOutMin"},
+              {"type": "address[]", "name": "path"},
+              {"type": "address", "name": "to"}
+            ],
+            "name": "swapExactTokensForTokens",
+            "outputs": [{"type": "uint256[]", "name": "amounts"}],
+            "stateMutability": "nonpayable",
+            "type": "function"
+          },
+          {
+            "inputs": [
+              {"type": "uint256", "name": "amountIn"},
+              {"type": "address[]", "name": "path"}
+            ],
+            "name": "getAmountsOut",
+            "outputs": [{"type": "uint256[]", "name": "amounts"}],
+            "stateMutability": "view",
+            "type": "function"
+          }
+        ]
+
+        const router = getContract({
+          address: routerAddress,
+          abi: ROUTER_ABI,
+          client: { public: publicClient, wallet: walletClient }
+        })
+
+        const amountIn = parseEther(opts.amount)
+        const path = [tokenIn, tokenOut]
+        const slippageBps = opts.slippageBps ?? 100
+        
+        // Get expected output and apply slippage
+        const amounts = await router.read.getAmountsOut([amountIn, path]) as bigint[]
+        const amountOutMin = amounts[1] * BigInt(10000 - slippageBps) / BigInt(10000)
+
+        // Execute the swap
+        const { request: simulateRequest } = await publicClient.simulateContract({
+          account,
+          address: routerAddress,
+          abi: ROUTER_ABI,
+          functionName: 'swapExactTokensForTokens',
+          args: [amountIn, amountOutMin, path, account.address]
+        })
+
+        const hash = await walletClient.writeContract(simulateRequest)
+        
+        if (opts.wait) {
+          await publicClient.waitForTransactionReceipt({ hash })
+        }
+
+        return {
+          hash,
+          details: {
+            amountIn: formatEther(amountIn),
+            expectedOut: formatEther(amounts[1]),
+            minOut: formatEther(amountOutMin),
+            path,
+            slippageBps
+          }
+        }
+        
       } catch (e: any) {
         throw new Error(`customSwap failed: ${e?.message || e}`)
       }

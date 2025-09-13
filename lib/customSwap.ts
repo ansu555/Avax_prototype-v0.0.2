@@ -268,7 +268,8 @@ export async function executeCustomSwap(
   ctx: {
     chainId: number
     publicClient: any
-    smartAccount: any
+    smartAccount?: any
+    walletClient?: any
     accountAddress: Address
   },
   params: CustomSwapParams
@@ -299,7 +300,13 @@ export async function executeCustomSwap(
         args: [ctx.accountAddress, routerAddress]
       })
       if (allowance < amountInUnits) {
-        const approveTx = await ctx.smartAccount.writeContract({
+        // Use smartAccount if available, otherwise use walletClient
+        const client = ctx.smartAccount || ctx.walletClient
+        if (!client) {
+          throw new Error('No wallet client available for approval')
+        }
+        
+        const approveTx = await client.writeContract({
           address: tokenIn.address as Address,
           abi: erc20Abi,
           functionName: 'approve',
@@ -370,9 +377,24 @@ export async function executeCustomSwap(
 
   let txHash: string
   try {
-    txHash = await ctx.smartAccount.writeContract(txWriteArgs)
+    // Use smartAccount if available, otherwise use walletClient
+    const client = ctx.smartAccount || ctx.walletClient
+    if (!client) {
+      throw new Error('No wallet client available for swap execution')
+    }
+    
+    // Debug logging
+    console.log('CustomSwap execution args:', {
+      address: txWriteArgs.address,
+      functionName: txWriteArgs.functionName,
+      args: txWriteArgs.args,
+      accountAddress: ctx.accountAddress
+    })
+    
+    txHash = await client.writeContract(txWriteArgs)
     logSwapEvent('swap.execute', { chainId: ctx.chainId, params, txHash, route: simulation.route })
   } catch (e: any) {
+    console.error('CustomSwap execution error:', e)
     logSwapEvent('swap.error', { code: 'EXECUTION_REVERTED', error: e?.message, params })
     throw interpretExecutionError(e)
   }
@@ -405,7 +427,7 @@ export async function executeCustomSwap(
  * High-level convenience function to perform full custom swap flow.
  */
 export async function customSwapFlow(
-  agentCtx: { chainId: number; publicClient: any; smartAccount: any; accountAddress: Address },
+  agentCtx: { chainId: number; publicClient: any; smartAccount?: any; walletClient?: any; accountAddress: Address },
   p: CustomSwapParams
 ) {
   return executeCustomSwap(agentCtx, p)
