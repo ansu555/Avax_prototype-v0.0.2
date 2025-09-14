@@ -12,7 +12,8 @@
  */
 import { createPublicClient, createWalletClient, http, parseUnits, erc20Abi } from 'viem'
 import { avalancheFuji } from 'viem/chains'
-import { CUSTOM_SWAP_ABI, simulateCustomSwap } from '../lib/customSwap'
+import { simulateCustomSwap } from '../lib/customSwap'
+import RouterAbi from '../app/abis/Router.json'
 import { resolveTokenBySymbol } from '../lib/tokens'
 import { privateKeyToAccount } from 'viem/accounts'
 import { config as loadEnv } from 'dotenv'
@@ -164,18 +165,21 @@ async function main() {
 
   console.log('Executing swap...')
   try {
+    // Use Router's swapExactTokensForTokens instead of CustomSwap's swapExactIn
+    const path = [
+      tokenIn.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenIn.address,
+      tokenOut.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenOut.address
+    ]
+    
     const txHash = await walletClient.writeContract({
       address: router as `0x${string}`,
-      abi: CUSTOM_SWAP_ABI as any,
-      functionName: 'swapExactIn',
+      abi: RouterAbi as any,
+      functionName: 'swapExactTokensForTokens',
       args: [
-        tokenIn.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenIn.address,
-        tokenOut.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenOut.address,
         amountInUnits,
         minOutUnits,
-        account.address,
-        deadline,
-        []
+        path,
+        account.address
       ]
     })
     console.log('Swap tx hash:', txHash)
