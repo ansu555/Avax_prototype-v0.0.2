@@ -98,24 +98,16 @@ The application requires several API keys for full functionality. Here's where t
 
 | Network | Environment Variable | Free Options | Premium Options |
 |---------|---------------------|--------------|-----------------|
-| **Base Mainnet** | `RPC_URL_BASE` | [Base Public RPC](https://mainnet.base.org) | [Alchemy](https://alchemy.com), [Infura](https://infura.io) |
-| **Avalanche Mainnet** | `RPC_URL_AVALANCHE` | [Avalanche Public RPC](https://api.avax.network/ext/bc/C/rpc) | [Alchemy](https://alchemy.com), [Infura](https://infura.io) |
 | **Fuji Testnet** | `RPC_URL_FUJI` | [Fuji Public RPC](https://api.avax-test.network/ext/bc/C/rpc) | [Alchemy](https://alchemy.com), [Infura](https://infura.io) |
 
-### ⚙️ Multi-Chain Configuration
 
 The application supports per-chain configuration. Each chain requires its own set of API keys and endpoints:
 
-- **Base Mainnet (8453)**: `*_BASE` suffix
 - **Avalanche Mainnet (43114)**: `*_AVALANCHE` suffix  
 - **Fuji Testnet (43113)**: `*_FUJI` suffix
 
 Example configuration pattern:
 ```env
-# Base Mainnet
-GASLESS_API_KEY_BASE="your_base_api_key"
-GASLESS_PAYMASTER_URL_BASE="your_base_paymaster_url"
-RPC_URL_BASE="your_base_rpc_url"
 
 # Avalanche Mainnet
 GASLESS_API_KEY_AVALANCHE="your_avalanche_api_key"
@@ -227,7 +219,7 @@ Here is a detailed map of triggers and actions:
 - **Triggers**: `balance`, `balances`
 - **Default Account**: Smart Account
 - **Examples**:
-  - `ETH balance` → `ETH: 0.0000 ($0.00)`
+  - `Avax balance` → `avax: 0.0000 ($0.00)`
   - `USDC balance` → `USDC: 5.0000 ($5.00)`
   - `balance 0x...` → Fetches balance for a specific token contract.
 - **Targeting Other Accounts**:
@@ -237,7 +229,7 @@ Here is a detailed map of triggers and actions:
 #### 📊 Prices & Market
 - **Triggers**: `price`, `prices`, `market`, `top`, `tokens`
 - **Examples**:
-  - `price eth`, `price of solana`
+  - `price avax`,
   - `market`, `top 10 coins`
 
 #### ⛽ Gas
@@ -267,9 +259,9 @@ Base mainnet (8453)
 
 | Symbol | Address |
 |--------|---------|
-| ETH    | native  |
-| WETH   | 0x4200000000000000000000000000000000000006 |
-| USDC   | 0x833589fCD6EDb6E08f4c7C10d6D3e96cF6a47b8f |
+| avax    | native  |
+| Wavax   | 0x4200000000000000000000000000000000000006 |
+| usdc   | 0x833589fCD6EDb6E08f4c7C10d6D3e96cF6a47b8f |
 
 Avalanche mainnet (43114)
 
