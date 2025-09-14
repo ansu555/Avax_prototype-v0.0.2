@@ -6,6 +6,7 @@ import { MemorySaver } from "@langchain/langgraph"
 import { createReactAgent } from "@langchain/langgraph/prebuilt"
 import { getAgent } from "@/lib/agent"
 import { resolveTokenBySymbol } from "@/lib/tokens"
+import { parseEther } from "viem"
 
 export const runtime = "nodejs"
 
@@ -53,7 +54,7 @@ export async function POST(req: Request) {
     if (!incoming.length) return NextResponse.json({ ok: false, error: "No prompt or messages provided" }, { status: 400 })
 
   const chainOverride = typeof body.chainId === 'number' ? body.chainId : undefined
-  const { agentkit, getAddress, getBalance, smartTransfer, smartSwap, customSwap } = await getAgent(chainOverride)
+  const { agentkit, getAddress, getBalance, smartTransfer, smartSwap, customSwap, publicClient, eoaClient, getEOAAddress, getSmartAddressOrNull } = await getAgent(chainOverride)
     const toolkit = new AgentkitToolkit(agentkit as any)
     const tools = toolkit.getTools()
 
@@ -81,6 +82,349 @@ export async function POST(req: Request) {
 
     const messages = toLangChainMessages(incoming)
     const config = { configurable: { thread_id: body.threadId || `web_${Date.now()}` } }
+
+    // === EARLY INTENT DETECTION (bypasses LLM for reliable data) ===
+    const lastUserMsg = [...incoming].reverse().find(m => m.role === 'user')?.content || ''
+    const text = lastUserMsg.toLowerCase().trim()
+    
+    // Top coins with dynamic count - "top 5 coins", "show me 15 cryptocurrencies", etc.
+    let topCoinsMatch = text.match(/top\s+(\d+)\s+(?:coin|crypto|cryptocurrency|token)/i)
+    if (!topCoinsMatch) topCoinsMatch = text.match(/show\s+(?:me\s+)?(\d+)\s+(?:coin|crypto|cryptocurrency|token)/i)
+    if (!topCoinsMatch) topCoinsMatch = text.match(/(\d+)\s+(?:top|best)\s+(?:coin|crypto|cryptocurrency)/i)
+    
+    if (topCoinsMatch || /\b(top|ranking|market|cryptocurrencies)\b/i.test(text)) {
+      const count = topCoinsMatch?.[1] ? parseInt(topCoinsMatch[1]) : 5
+      const n = Math.min(50, Math.max(1, count))
+      
+      try {
+        const coinrankingApiUrl = `https://api.coinranking.com/v2/coins?limit=${n}&orderBy=marketCap&orderDirection=desc`
+        const response = await fetch(coinrankingApiUrl, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          const coins = data.data?.coins || []
+          
+          if (coins.length > 0) {
+            const formatPrice = (price: string) => {
+              const num = parseFloat(price)
+              if (num >= 1) return `$${num.toFixed(2)}`
+              if (num >= 0.01) return `$${num.toFixed(4)}`
+              return `$${parseFloat(price).toExponential(2)}`
+            }
+            
+            const formatMarketCap = (marketCap: string) => {
+              const num = parseFloat(marketCap)
+              if (num >= 1e12) return `$${(num / 1e12).toFixed(1)}T`
+              if (num >= 1e9) return `$${(num / 1e9).toFixed(1)}B`
+              if (num >= 1e6) return `$${(num / 1e6).toFixed(1)}M`
+              return `$${num.toFixed(0)}`
+            }
+            
+            const coinsText = coins.map((coin: any, index: number) => {
+              const change = coin.change ? parseFloat(coin.change) : 0
+              const changeText = change >= 0 ? `+${change.toFixed(2)}%` : `${change.toFixed(2)}%`
+              const changeEmoji = change >= 0 ? '🟢' : '🔴'
+              
+              return `${index + 1}. **${coin.name} (${coin.symbol})**\n   💰 ${formatPrice(coin.price)} | 📊 ${formatMarketCap(coin.marketCap)} | ${changeEmoji} ${changeText}`
+            }).join('\n\n')
+            
+            return NextResponse.json({
+              ok: true,
+              content: `📈 **Top ${n} Cryptocurrencies by Market Cap**\n\n${coinsText}\n\n*Data from CoinRanking API*`,
+              threadId: config.configurable.thread_id
+            })
+          }
+        }
+      } catch (e) {
+        // Continue to agent if API fails
+      }
+    }
+    
+    // Gas price - "gas price", "avax gas", "current gas fees" (must come before individual coin price)
+    if (/\b(?:gas\s+(?:price|fee|cost)|avax\s+gas|current\s+gas|network\s+fee|gas\s+estimate)\b/i.test(text)) {
+      try {
+        const { createPublicClient, http } = require('viem')
+        const { avalanche, avalancheFuji } = require('viem/chains')
+        const chainId = Number(process.env.CHAIN_ID || 43113)
+        const chain = chainId === 43114 ? avalanche : avalancheFuji
+        const rpcUrl = chainId === 43114 
+          ? (process.env.RPC_URL_AVALANCHE || 'https://api.avax.network/ext/bc/C/rpc')
+          : (process.env.RPC_URL_FUJI || process.env.NEXT_PUBLIC_RPC_URL_FUJI || 'https://api.avax-test.network/ext/bc/C/rpc')
+        const publicClient = createPublicClient({ chain, transport: http(rpcUrl) })
+        
+        const gasPrice = await publicClient.getGasPrice()
+        const gasPriceGwei = Number(gasPrice) / 1e9
+        const networkName = chainId === 43114 ? 'Avalanche Mainnet' : 'Avalanche Fuji Testnet'
+        
+        return NextResponse.json({
+          ok: true,
+          content: `⛽ **${networkName} Gas Price**\n\nCurrent: ${gasPriceGwei.toFixed(2)} Gwei\nNetwork: ${networkName} (Chain ID: ${chainId})\n\n*Real-time data from RPC*`,
+          threadId: config.configurable.thread_id
+        })
+      } catch (e) {
+        // Continue to agent if RPC fails
+      }
+    }
+    
+    // Balance check - "my balance", "balance", "show balance" (early detection)
+    if (/\b(balance|balances)\b/.test(text)) {
+      try {
+        const eoaAddress = await getEOAAddress()
+        const chainId = Number(process.env.CHAIN_ID || 43113)
+        
+        // Get AVAX balance directly via RPC
+        const avaxBalance = await publicClient.getBalance({ address: eoaAddress })
+        const avaxFormatted = Number(avaxBalance) / 1e18
+        
+        let tokenBalances = ''
+        
+        // Try to get WAVAX and USDC balances
+        try {
+          const wavaxToken = resolveTokenBySymbol('WAVAX')
+          const usdcToken = resolveTokenBySymbol('USDC')
+          
+          if (wavaxToken && wavaxToken.address !== 'AVAX') {
+            const wavaxBalance = await publicClient.readContract({
+              address: wavaxToken.address as `0x${string}`,
+              abi: [{ name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] }],
+              functionName: 'balanceOf',
+              args: [eoaAddress]
+            })
+            const wavaxFormatted = Number(wavaxBalance) / 1e18
+            tokenBalances += `\nWAVAX: ${wavaxFormatted.toFixed(4)}`
+          }
+          
+          if (usdcToken && usdcToken.address !== 'AVAX') {
+            const usdcBalance = await publicClient.readContract({
+              address: usdcToken.address as `0x${string}`,
+              abi: [{ name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] }],
+              functionName: 'balanceOf',
+              args: [eoaAddress]
+            })
+            const usdcFormatted = Number(usdcBalance) / 1e18
+            tokenBalances += `\nUSDC: ${usdcFormatted.toFixed(4)}`
+          }
+        } catch (tokenError) {
+          // Token balance queries failed, but that's okay
+        }
+        
+        return NextResponse.json({
+          ok: true,
+          content: `💰 **Your Balance** (Avalanche ${chainId === 43114 ? 'Mainnet' : 'Fuji'})\n\nAddress: ${eoaAddress}\n\nAVAX: ${avaxFormatted.toFixed(4)}${tokenBalances}`,
+          threadId: config.configurable.thread_id
+        })
+      } catch (error) {
+        // Continue to agent if balance fails
+      }
+    }
+    
+    // Smart account balance check - "smart balance", "smart account balance"
+    if (/\b(smart\s+(?:account\s+)?balance|smart\s+account)\b/i.test(text)) {
+      try {
+        const smartAddress = await getSmartAddressOrNull()
+        const chainId = Number(process.env.CHAIN_ID || 43113)
+        
+        if (!smartAddress) {
+          return NextResponse.json({
+            ok: true,
+            content: `❌ **Smart Account Not Available**\n\nNo smart account address found. The smart account may not be deployed yet or there might be a configuration issue.\n\nTry using regular balance commands for your EOA instead.`,
+            threadId: config.configurable.thread_id
+          })
+        }
+        
+        // Get AVAX balance for smart account
+        const avaxBalance = await publicClient.getBalance({ address: smartAddress })
+        const avaxFormatted = Number(avaxBalance) / 1e18
+        
+        let tokenBalances = ''
+        
+        // Try to get WAVAX and USDC balances for smart account
+        try {
+          const wavaxToken = resolveTokenBySymbol('WAVAX')
+          const usdcToken = resolveTokenBySymbol('USDC')
+          
+          if (wavaxToken && wavaxToken.address !== 'AVAX') {
+            const wavaxBalance = await publicClient.readContract({
+              address: wavaxToken.address as `0x${string}`,
+              abi: [{ name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] }],
+              functionName: 'balanceOf',
+              args: [smartAddress]
+            })
+            const wavaxFormatted = Number(wavaxBalance) / 1e18
+            tokenBalances += `\nWAVAX: ${wavaxFormatted.toFixed(4)}`
+          }
+          
+          if (usdcToken && usdcToken.address !== 'AVAX') {
+            const usdcBalance = await publicClient.readContract({
+              address: usdcToken.address as `0x${string}`,
+              abi: [{ name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] }],
+              functionName: 'balanceOf',
+              args: [smartAddress]
+            })
+            const usdcFormatted = Number(usdcBalance) / 1e18
+            tokenBalances += `\nUSDC: ${usdcFormatted.toFixed(4)}`
+          }
+        } catch (tokenError) {
+          // Token balance queries failed, but that's okay
+        }
+        
+        return NextResponse.json({
+          ok: true,
+          content: `🏦 **Smart Account Balance** (Avalanche ${chainId === 43114 ? 'Mainnet' : 'Fuji'})\n\nSmart Account: ${smartAddress}\n\nAVAX: ${avaxFormatted.toFixed(4)}${tokenBalances}`,
+          threadId: config.configurable.thread_id
+        })
+      } catch (error) {
+        return NextResponse.json({
+          ok: true,
+          content: `❌ Failed to check smart account balance: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          threadId: config.configurable.thread_id
+        })
+      }
+    }
+    
+    // Smart account address query - "smart address", "smart account address"
+    if (/\b(smart\s+(?:account\s+)?address|smart\s+account)\b/i.test(text) && !/balance/i.test(text)) {
+      try {
+        const smartAddress = await getSmartAddressOrNull()
+        const eoaAddress = await getEOAAddress()
+        const chainId = Number(process.env.CHAIN_ID || 43113)
+        const networkName = chainId === 43114 ? 'Avalanche Mainnet' : 'Avalanche Fuji testnet'
+        
+        if (!smartAddress) {
+          return NextResponse.json({
+            ok: true,
+            content: `🏦 **Smart Account Status**\n\n❌ No smart account available\n\nThe smart account may not be deployed yet. You can use your EOA instead:\n\n📱 **Your EOA**: ${eoaAddress}`,
+            threadId: config.configurable.thread_id
+          })
+        }
+        
+        return NextResponse.json({
+          ok: true,
+          content: `🏦 **Smart Account Address**\n\n${smartAddress}\n\n📱 **Your EOA**: ${eoaAddress}\n\n*Both on ${networkName}*`,
+          threadId: config.configurable.thread_id
+        })
+      } catch (error) {
+        return NextResponse.json({
+          ok: true,
+          content: `❌ Failed to get smart account address: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          threadId: config.configurable.thread_id
+        })
+      }
+    }
+    
+    // Transfer detection - "transfer 0.01 AVAX to 0x..." (early detection)
+    const transferRe = /transfer\s+(\d+(?:\.\d+)?)\s*(?:([A-Za-z]{2,6}))?\s*(?:tokens?)?\s*(?:to|=>)\s*(0x[a-fA-F0-9]{40})/
+    const tr = text.match(transferRe)
+    if (tr) {
+      const amount = tr[1]
+      const symbol = tr[2] || 'AVAX' // Default to AVAX if no symbol specified
+      const to = tr[3] as `0x${string}`
+      
+      try {
+        if (symbol.toUpperCase() === 'AVAX') {
+          // For AVAX transfers, use our direct implementation since AgentKit has issues with Fuji testnet
+          
+          // First check if we have enough balance
+          const eoaAddress = await getEOAAddress()
+          const currentBalance = await publicClient.getBalance({ address: eoaAddress })
+          const transferAmount = parseEther(amount)
+          
+          // Get current gas price
+          const gasPrice = await publicClient.getGasPrice()
+          const gasLimit = BigInt(21000)
+          const gasCost = gasPrice * gasLimit
+          const totalCost = transferAmount + gasCost
+          
+          if (currentBalance < totalCost) {
+            const currentBalanceEth = Number(currentBalance) / 1e18
+            const totalCostEth = Number(totalCost) / 1e18
+            const gasCostEth = Number(gasCost) / 1e18
+            
+            return NextResponse.json({
+              ok: true,
+              content: `❌ **Insufficient Balance**\n\nCurrent Balance: ${currentBalanceEth.toFixed(6)} AVAX\nTransfer Amount: ${amount} AVAX\nEstimated Gas Cost: ${gasCostEth.toFixed(6)} AVAX\nTotal Needed: ${totalCostEth.toFixed(6)} AVAX\n\nYou need ${(totalCostEth - currentBalanceEth).toFixed(6)} more AVAX to complete this transfer.`,
+              threadId: config.configurable.thread_id
+            })
+          }
+          
+          const txHash = await eoaClient.sendTransaction({
+            to,
+            value: transferAmount,
+            gas: gasLimit,
+            gasPrice: gasPrice
+          })
+          await publicClient.waitForTransactionReceipt({ hash: txHash })
+          
+          return NextResponse.json({
+            ok: true,
+            content: `✅ Successfully transferred ${amount} AVAX to ${to.slice(0, 8)}...${to.slice(-6)}\n\nTransaction: ${txHash}\nGas Used: ${Number(gasCost) / 1e18} AVAX`,
+            threadId: config.configurable.thread_id
+          })
+        } else {
+          // For token transfers, continue to agent handling below
+        }
+      } catch (error) {
+        return NextResponse.json({
+          ok: true,
+          content: `❌ Transfer failed: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease check your balance and try again.`,
+          threadId: config.configurable.thread_id
+        })
+      }
+    }
+    
+    // Individual coin price - "price of bitcoin", "BTC price", "what's ETH worth"
+    const priceMatch = text.match(/\b(?:price\s+of\s+|what'?s\s+|current\s+price\s+of\s+)?([a-z]{2,10})\s+(?:price|worth|value|cost)\b/i) ||
+                       text.match(/\b(?:price|worth|value|cost)\s+(?:of\s+)?([a-z]{2,10})\b/i) ||
+                       text.match(/\bhow\s+much\s+(?:is\s+)?([a-z]{2,10})\b/i)
+    if (priceMatch && priceMatch[1]) {
+      const sym = priceMatch[1].toUpperCase()
+      try {
+        const coinrankingApiUrl = `https://api.coinranking.com/v2/coins?search=${sym.toLowerCase()}&limit=5`
+        const response = await fetch(coinrankingApiUrl, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          const coin = data.data?.coins?.find((c: any) => 
+            c.symbol.toUpperCase() === sym || c.name.toLowerCase() === sym.toLowerCase()
+          )
+          
+          if (coin) {
+            const price = parseFloat(coin.price)
+            const change = coin.change ? parseFloat(coin.change) : 0
+            const changeText = change >= 0 ? `+${change.toFixed(2)}%` : `${change.toFixed(2)}%`
+            const changeEmoji = change >= 0 ? '🟢' : '🔴'
+            
+            const formatPrice = (price: number) => {
+              if (price >= 1) return `$${price.toFixed(2)}`
+              if (price >= 0.01) return `$${price.toFixed(4)}`
+              return `$${price.toExponential(2)}`
+            }
+            
+            const formatMarketCap = (marketCap: string) => {
+              const num = parseFloat(marketCap)
+              if (num >= 1e12) return `$${(num / 1e12).toFixed(1)}T`
+              if (num >= 1e9) return `$${(num / 1e9).toFixed(1)}B`
+              if (num >= 1e6) return `$${(num / 1e6).toFixed(1)}M`
+              return `$${num.toFixed(0)}`
+            }
+            
+            return NextResponse.json({
+              ok: true,
+              content: `💰 **${coin.name} (${coin.symbol})**\n\nPrice: ${formatPrice(price)}\nMarket Cap: ${formatMarketCap(coin.marketCap)}\n${changeEmoji} 24h Change: ${changeText}\n\n*Data from CoinRanking API*`,
+              threadId: config.configurable.thread_id
+            })
+          }
+        }
+      } catch (e) {
+        // Continue to agent if API fails
+      }
+    }
 
     // Execute agent and collect the final response
     // Helper: simple intent fallback for common actions
@@ -132,61 +476,6 @@ export async function POST(req: Request) {
         ].filter(Boolean).join('\n')
       }
 
-  // Balance (native or token)
-      if (/\b(balance|balances)\b/.test(text)) {
-        const addrCtx = await resolveAddressContext()
-        if (addrCtx.missing) {
-          return 'No connected wallet detected. Connect your wallet to query the Connected EOA. '
-        }
-        const fmtUSD = (n: number) => {
-          if (!Number.isFinite(n) || n === 0) return '0.00'
-          const abs = Math.abs(n)
-          if (abs > 0 && abs < 0.01) return (n < 0 ? '-' : '') + '0.01'
-          return n.toFixed(2)
-        }
-        // Try token address
-        const tokenAddr = (lastUser!.content.match(/0x[a-fA-F0-9]{40}/) || [])[0]
-        if (tokenAddr) {
-          const bal = await getBalance(tokenAddr as any, addrCtx.target as any)
-          return `Token balance (${addrCtx.label}) ${tokenAddr}: ${parseFloat(bal).toFixed(4)}`
-        }
-        // Try symbol
-        const symMatch = lastUser!.content.match(/\b([A-Z]{2,6})\b/)
-        if (symMatch) {
-          const { getChainInfo } = await getAgent(chainOverride)
-          const info = await getChainInfo()
-          const token = resolveTokenBySymbol(symMatch[1], info.chainId)
-          if (token && token.address !== 'AVAX') {
-            const bal = await getBalance(token.address as any, addrCtx.target as any)
-            const formattedBal = parseFloat(bal).toFixed(4)
-            try {
-              const { getTokenPrice } = await getAgent()
-              const priceData = await getTokenPrice(token.symbol)
-              const usd = parseFloat(bal) * (priceData?.price || 0)
-              return `${token.symbol}: ${formattedBal} ($${fmtUSD(usd)})`
-            } catch {
-              return `${token.symbol}: ${formattedBal}`
-            }
-          }
-        }
-        const ethBal = await getBalance(undefined, addrCtx.target as any)
-        try {
-          const { getTokenPrice } = await getAgent(chainOverride)
-          // Decide native symbol based on chain
-          const { getChainInfo } = await getAgent(chainOverride)
-          const info = await getChainInfo()
-          const nativeSym = info.nativeSymbol
-          const priceData = await getTokenPrice(nativeSym)
-          const usd = parseFloat(ethBal) * (priceData?.price || 0)
-          return `${nativeSym}: ${parseFloat(ethBal).toFixed(4)} ($${fmtUSD(usd)})`
-        } catch {
-          const { getChainInfo } = await getAgent(chainOverride)
-          const info = await getChainInfo()
-          const nativeSym = info.nativeSymbol
-          return `${nativeSym}: ${parseFloat(ethBal).toFixed(4)}`
-        }
-      }
-
       // Market data and prices
     if (/\b(price|prices?|market|market data|top|tokens?)\b/.test(text)) {
   const { getTokenPrice, getMarketData } = await getAgent(chainOverride)
@@ -199,22 +488,92 @@ export async function POST(req: Request) {
             const priceData = await getTokenPrice(sym)
             return `${sym} price: $${priceData.price}`
           } catch (e) {
-            // fall through to overview if specific fails
+            // Fallback to CoinRanking API for individual coin prices
+            try {
+              const coinrankingApiUrl = `https://api.coinranking.com/v2/coins?search=${sym.toLowerCase()}&limit=1`
+              const response = await fetch(coinrankingApiUrl, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+              })
+              
+              if (response.ok) {
+                const data = await response.json()
+                const coin = data.data?.coins?.[0]
+                if (coin && coin.symbol.toUpperCase() === sym) {
+                  const price = parseFloat(coin.price)
+                  const change = coin.change ? parseFloat(coin.change) : 0
+                  const changeText = change >= 0 ? `+${change.toFixed(2)}%` : `${change.toFixed(2)}%`
+                  const changeEmoji = change >= 0 ? '🟢' : '🔴'
+                  
+                  return `💰 **${coin.name} (${coin.symbol})**\nPrice: $${price >= 1 ? price.toFixed(2) : price.toFixed(6)}\n${changeEmoji} 24h Change: ${changeText}`
+                }
+              }
+            } catch (coinRankingError) {
+              // Silent fallback failure
+            }
+            return `Couldn't fetch price for ${sym}. Please check the symbol and try again.`
           }
         }
         
         // General market overview (only if user asked about market, not gas)
         if (/\b(market|top|coins?|cryptocurrencies|tokens?)\b/.test(text)) {
           try {
-            // Determine requested count, default 5, cap at 20
-            const nMatch = text.match(/top\s+(\d{1,2})/)
-            const n = Math.min(20, Math.max(1, nMatch ? parseInt(nMatch[1], 10) : 5))
-            const marketData = await getMarketData()
-            const top5 = (Array.isArray(marketData) ? marketData : [])
-              .slice(0, n)
-              .map((coin: any) => `${coin.symbol}: $${Number(coin.price || 0).toFixed(4)}`)
-              .join(', ')
-            return `Top ${n} cryptocurrencies: ${top5}`
+            // Determine requested count, default 5, cap at 50
+            const nMatch = text.match(/top\s+(\d{1,2})/) || text.match(/show\s*(?:me)?\s*(\d{1,2})/)
+            const n = Math.min(50, Math.max(1, nMatch ? parseInt(nMatch[1], 10) : 5))
+            
+            // Try AgentKit first
+            try {
+              const marketData = await getMarketData()
+              const topCoins = (Array.isArray(marketData) ? marketData : [])
+                .slice(0, n)
+                .map((coin: any) => `${coin.symbol}: $${Number(coin.price || 0).toFixed(4)}`)
+                .join(', ')
+              if (topCoins) {
+                return `Top ${n} cryptocurrencies: ${topCoins}`
+              }
+            } catch (agentError) {
+              // Fallback to CoinRanking API
+              const coinrankingApiUrl = `https://api.coinranking.com/v2/coins?limit=${n}&orderBy=marketCap&orderDirection=desc`
+              const response = await fetch(coinrankingApiUrl, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+              })
+              
+              if (response.ok) {
+                const data = await response.json()
+                const coins = data.data?.coins || []
+                
+                if (coins.length > 0) {
+                  const formatPrice = (price: string) => {
+                    const num = parseFloat(price)
+                    if (num >= 1) return `$${num.toFixed(2)}`
+                    if (num >= 0.01) return `$${num.toFixed(4)}`
+                    return `$${parseFloat(price).toExponential(2)}`
+                  }
+                  
+                  const formatMarketCap = (marketCap: string) => {
+                    const num = parseFloat(marketCap)
+                    if (num >= 1e12) return `$${(num / 1e12).toFixed(1)}T`
+                    if (num >= 1e9) return `$${(num / 1e9).toFixed(1)}B`
+                    if (num >= 1e6) return `$${(num / 1e6).toFixed(1)}M`
+                    return `$${num.toFixed(0)}`
+                  }
+                  
+                  const coinsText = coins.map((coin: any, index: number) => {
+                    const change = coin.change ? parseFloat(coin.change) : 0
+                    const changeText = change >= 0 ? `+${change.toFixed(2)}%` : `${change.toFixed(2)}%`
+                    const changeEmoji = change >= 0 ? '🟢' : '🔴'
+                    
+                    return `${index + 1}. **${coin.name} (${coin.symbol})**\n   💰 ${formatPrice(coin.price)} | 📊 ${formatMarketCap(coin.marketCap)} | ${changeEmoji} ${changeText}`
+                  }).join('\n\n')
+                  
+                  return `📈 **Top ${n} Cryptocurrencies by Market Cap**\n\n${coinsText}\n\n*Data from CoinRanking API*`
+                }
+              }
+            }
+            
+            return `Couldn't fetch market data. Please try again later.`
           } catch (e) {
             return `Couldn't fetch market data: ${e instanceof Error ? e.message : 'Unknown error'}`
           }
@@ -228,7 +587,20 @@ export async function POST(req: Request) {
           const gasData = await getGasEstimate()
           return `Current gas price: ${gasData.gasPrice} Gwei\nBase fee: ${gasData.baseFee} Gwei\nChain: ${gasData.chain} (${gasData.chainId})`
         } catch (e) {
-          return `Couldn't fetch gas estimate: ${e instanceof Error ? e.message : 'Unknown error'}`
+          // Fallback to direct RPC call for Avalanche Fuji
+          try {
+            const { createPublicClient, http } = require('viem')
+            const { avalancheFuji } = require('viem/chains')
+            const rpcUrl = process.env.RPC_URL_FUJI || process.env.NEXT_PUBLIC_RPC_URL_FUJI || 'https://api.avax-test.network/ext/bc/C/rpc'
+            const publicClient = createPublicClient({ chain: avalancheFuji, transport: http(rpcUrl) })
+            
+            const gasPrice = await publicClient.getGasPrice()
+            const gasPriceGwei = Number(gasPrice) / 1e9
+            
+            return `⛽ **Avalanche Fuji Testnet Gas Price**\nCurrent: ${gasPriceGwei.toFixed(2)} Gwei\nNetwork: Avalanche Fuji (Chain ID: 43113)`
+          } catch (fallbackError) {
+            return `Couldn't fetch gas estimate: ${e instanceof Error ? e.message : 'Unknown error'}`
+          }
         }
       }
 
@@ -282,18 +654,36 @@ export async function POST(req: Request) {
       const tr = lastUser!.content.match(transferRe)
       if (tr) {
         const amount = tr[1]
-        const symbol = tr[2]
+        const symbol = tr[2] || 'AVAX' // Default to AVAX if no symbol specified
         const to = tr[3] as `0x${string}`
-        if (symbol) {
-    const { getChainInfo } = await getAgent(chainOverride)
+        
+        try {
+          const { getChainInfo } = await getAgent(chainOverride)
           const info = await getChainInfo()
-          const token = resolveTokenBySymbol(symbol, info.chainId)
-          if (!token) return `Unknown token symbol: ${symbol}`
-          const { hash } = await smartTransfer({ tokenAddress: token.address === 'AVAX' ? undefined : (token.address as any), amount, destination: to, wait: true })
-          return `Transfer submitted. Tx hash: ${hash}`
-        } else {
-          const { hash } = await smartTransfer({ amount, destination: to, wait: true })
-          return `Transfer submitted. Tx hash: ${hash}`
+          
+          if (symbol.toUpperCase() === 'AVAX') {
+            // For AVAX transfers, use our direct implementation since AgentKit has issues with Fuji testnet
+            const txHash = await eoaClient.sendTransaction({
+              to,
+              value: parseEther(amount),
+              gas: BigInt(21000)
+            })
+            await publicClient.waitForTransactionReceipt({ hash: txHash })
+            return `✅ Successfully transferred ${amount} AVAX to ${to.slice(0, 8)}...${to.slice(-6)}\n\nTransaction: ${txHash}`
+          } else {
+            // For token transfers, try AgentKit first, then fallback
+            const token = resolveTokenBySymbol(symbol, info.chainId)
+            if (!token) return `Unknown token symbol: ${symbol}`
+            
+            try {
+              const { hash } = await smartTransfer({ tokenAddress: token.address === 'AVAX' ? undefined : (token.address as any), amount, destination: to, wait: true })
+              return `✅ Successfully transferred ${amount} ${symbol} to ${to.slice(0, 8)}...${to.slice(-6)}\n\nTransaction: ${hash}`
+            } catch (agentError) {
+              return `❌ Transfer failed: ${agentError instanceof Error ? agentError.message : 'Unknown error'}\n\nPlease check your balance and try again.`
+            }
+          }
+        } catch (error) {
+          return `❌ Transfer failed: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease check your balance and try again.`
         }
       }
 

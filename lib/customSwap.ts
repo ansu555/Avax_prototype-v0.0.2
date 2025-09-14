@@ -356,11 +356,23 @@ export async function executeCustomSwap(
   // integration with a service (e.g., Flashbots-style relay for supported chains).
   const privateTx = !!params.privateTx
   
-  // Build direct path (extend later for multi-hop). AVAX sentinel converted to zero address placeholder if needed.
-  const path: Address[] = [
-    tokenIn.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenIn.address as Address,
-    tokenOut.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenOut.address as Address
-  ]
+  // Build execution path. If simulation produced a multi-hop route, use it; otherwise fallback to direct.
+  let path: Address[]
+  if (simulation.route && simulation.route.hops && simulation.route.hops.length > 2) {
+    // Use simulated hops; validate first & map any AVAX sentinel if ever present in route (currently tokens are ERC20s)
+    const hops = simulation.route.hops
+    // Basic sanity: first & last hop must match tokenIn/tokenOut
+    if (hops[0].toLowerCase() !== tokenIn.address.toLowerCase() || hops[hops.length - 1].toLowerCase() !== tokenOut.address.toLowerCase()) {
+      throw new CustomSwapError('ROUTE_NOT_FOUND', 'Simulated route endpoints mismatch tokenIn/tokenOut', { data: { hops, tokenIn: tokenIn.address, tokenOut: tokenOut.address } })
+    }
+    path = hops.map(a => a as Address)
+  } else {
+    // Direct path (two-token)
+    path = [
+      tokenIn.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenIn.address as Address,
+      tokenOut.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenOut.address as Address
+    ]
+  }
 
   const txWriteArgs: any = {
     address: routerAddress,
