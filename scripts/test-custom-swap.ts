@@ -13,10 +13,33 @@
 import { createPublicClient, createWalletClient, http, parseUnits, erc20Abi } from 'viem'
 import { avalancheFuji } from 'viem/chains'
 import { simulateCustomSwap } from '../lib/customSwap'
-import RouterAbi from '../app/abis/Router.json'
 import { resolveTokenBySymbol } from '../lib/tokens'
 import { privateKeyToAccount } from 'viem/accounts'
 import { config as loadEnv } from 'dotenv'
+
+/**
+ * Local fallback ABI for the custom swap router (since CUSTOM_SWAP_ABI was not exported).
+ * Adjust if your actual contract interface differs.
+ */
+const CUSTOM_SWAP_ABI = [
+  {
+    "inputs": [
+      { "internalType": "address", "name": "tokenIn", "type": "address" },
+      { "internalType": "address", "name": "tokenOut", "type": "address" },
+      { "internalType": "uint256", "name": "amountIn", "type": "uint256" },
+      { "internalType": "uint256", "name": "minAmountOut", "type": "uint256" },
+      { "internalType": "address", "name": "recipient", "type": "address" },
+      { "internalType": "uint256", "name": "deadline", "type": "uint256" },
+      { "internalType": "bytes[]", "name": "extraData", "type": "bytes[]" }
+    ],
+    "name": "swapExactIn",
+    "outputs": [
+      { "internalType": "uint256", "name": "amountOut", "type": "uint256" }
+    ],
+    "stateMutability": "payable",
+    "type": "function"
+  }
+] as const
 
 // Load environment variables from .env.local (Next.js style) before anything else.
 loadEnv({ path: '.env.local' })
@@ -165,21 +188,18 @@ async function main() {
 
   console.log('Executing swap...')
   try {
-    // Use Router's swapExactTokensForTokens instead of CustomSwap's swapExactIn
-    const path = [
-      tokenIn.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenIn.address,
-      tokenOut.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenOut.address
-    ]
-    
     const txHash = await walletClient.writeContract({
       address: router as `0x${string}`,
-      abi: RouterAbi as any,
-      functionName: 'swapExactTokensForTokens',
+      abi: CUSTOM_SWAP_ABI as any,
+      functionName: 'swapExactIn',
       args: [
+        tokenIn.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenIn.address,
+        tokenOut.address === 'AVAX' ? '0x0000000000000000000000000000000000000000' : tokenOut.address,
         amountInUnits,
         minOutUnits,
-        path,
-        account.address
+        account.address,
+        deadline,
+        []
       ]
     })
     console.log('Swap tx hash:', txHash)

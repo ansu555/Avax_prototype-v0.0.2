@@ -1,7 +1,15 @@
 import { ethers } from "hardhat";
 
 /*
- Deployment script:
+ *** DEPRECATED: TESTNET DEPLOYMENT SCRIPT ***
+ This script was used for Fuji testnet deployment.
+ For mainnet, we use real tokens (USDC, WAVAX) instead of custom TestTokens.
+ 
+ Current mainnet deployment addresses:
+ - Factory: 0xA4f7D49F555624Ce9e041cE2Eb81dbfE35059ef6
+ - Router: 0x9e2563Bfa8FD91F09FC32A3f15325a582cbDbD2a
+ 
+ Original deployment script:
  1. Deploy Factory
  2. Deploy Router (with factory address)
  3. Deploy two TestToken instances (TOKENA, TOKENB) + optionally TOKENC

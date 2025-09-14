@@ -8,7 +8,7 @@ import path from 'path';
   Copies only the `abi` field into ../../app/abis (adjust path as needed).
 */
 
-const CONTRACTS = ['Factory','Router','Pair','TestToken'];
+const CONTRACTS = ['Factory','Router','Pair'];
 
 async function main() {
   const root = path.join(__dirname, '..');
