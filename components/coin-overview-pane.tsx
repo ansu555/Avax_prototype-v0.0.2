@@ -145,7 +145,7 @@ export default function CoinOverviewPane({ coinId }: { coinId?: string }) {
             </CardHeader>
             <CardContent>
               <ChartContainer
-                config={{ price: { label: "Price", theme: { light: "#113CFC", dark: "#F3C623" } } }}
+                config={{ price: { label: "Price", theme: { light: "red-600", dark: "#F3C623" } } }}
                 className="h-[360px]"
               >
                 <AreaChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>

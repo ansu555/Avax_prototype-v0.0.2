@@ -67,13 +67,13 @@ export default function ChatBubble({ variant = "floating", align = "right" }: Ch
       if (m.index > lastIndex) out.push(text.slice(lastIndex, m.index))
       if (tx) {
         out.push(
-          <a key={`${m.index}-tx`} href={`${explorerBase}/tx/${tx}`} target="_blank" rel="noreferrer" className="text-blue-600 underline underline-offset-2 dark:text-[#F3C623]">
+          <a key={`${m.index}-tx`} href={`${explorerBase}/tx/${tx}`} target="_blank" rel="noreferrer" className="text-red-600 underline underline-offset-2 dark:text-[#F3C623]">
             {tx}
           </a>
         )
       } else if (addr) {
         out.push(
-          <a key={`${m.index}-addr`} href={`${explorerBase}/address/${addr}`} target="_blank" rel="noreferrer" className="text-blue-500 underline underline-offset-2 dark:text-[#F3C623]">
+          <a key={`${m.index}-addr`} href={`${explorerBase}/address/${addr}`} target="_blank" rel="noreferrer" className="text-red-500 underline underline-offset-2 dark:text-[#F3C623]">
             {addr}
           </a>
         )
@@ -100,8 +100,8 @@ export default function ChatBubble({ variant = "floating", align = "right" }: Ch
   const isFooter = variant === "footer"
   const wrapperClass = isFooter ? (align === "left" ? "relative mr-auto" : "relative ml-auto") : undefined
   const buttonClass = isFooter
-    ? "relative z-40 grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-xl shadow-blue-500/20 focus:outline-none dark:from-[#F3C623] dark:to-[#D9A800] dark:shadow-[#F3C623]/20"
-    : "fixed bottom-8 right-5 z-50 grid h-14 w-14 place-items-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-xl shadow-blue-500/20 focus:outline-none dark:from-[#F3C623] dark:to-[#D9A800] dark:shadow-[#F3C623]/20"
+    ? "relative z-40 grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-red-500 to-red-600 text-white shadow-xl shadow-red-500/20 focus:outline-none dark:from-[#F3C623] dark:to-[#D9A800] dark:shadow-[#F3C623]/20"
+    : "fixed bottom-8 right-5 z-50 grid h-14 w-14 place-items-center rounded-full bg-gradient-to-br from-red-500 to-red-600 text-white shadow-xl shadow-red-500/20 focus:outline-none dark:from-[#F3C623] dark:to-[#D9A800] dark:shadow-[#F3C623]/20"
   const panelClass = isFooter
     ? (align === "left"
         ? "absolute bottom-[calc(100%+0.5rem)] left-0 z-50 flex h-[34rem] w-[26rem] flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white/95 text-slate-900 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#171717]/95 dark:text-slate-100"
@@ -118,9 +118,9 @@ export default function ChatBubble({ variant = "floating", align = "right" }: Ch
         whileHover={{ scale: 1.07 }}
         whileTap={{ scale: 0.95 }}
       >
-        <span className="absolute inset-0 rounded-full bg-blue-500/30 blur-xl -z-10 dark:bg-[#F3C623]/30" aria-hidden />
+        <span className="absolute inset-0 rounded-full bg-red-500/30 blur-xl -z-10 dark:bg-[#F3C623]/30" aria-hidden />
         <MessageCircle className="h-6 w-6" />
-        <span className="absolute -z-10 inline-flex h-full w-full animate-ping rounded-full bg-blue-400/20 dark:bg-[#F3C623]/20" aria-hidden />
+        <span className="absolute -z-10 inline-flex h-full w-full animate-ping rounded-full bg-red-400/20 dark:bg-[#F3C623]/20" aria-hidden />
       </motion.button>
 
       {/* Chat Panel */}
@@ -138,7 +138,7 @@ export default function ChatBubble({ variant = "floating", align = "right" }: Ch
             <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 px-4 py-3 dark:border-white/10">
               <div className="flex items-center gap-2">
                 <div className="grid h-8 w-8 place-items-center rounded-full bg-white/10">
-                  <Bot className="h-4 w-4 text-blue-400 dark:text-[#F3C623]" />
+                  <Bot className="h-4 w-4 text-red-400 dark:text-[#F3C623]" />
                 </div>
                 <div className="text-sm font-semibold">10xSwap AI Agent</div>
               </div>
@@ -157,7 +157,7 @@ export default function ChatBubble({ variant = "floating", align = "right" }: Ch
                   <button
                     key={x.label}
                     onClick={() => usePreset(x.prompt)}
-                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:border-blue-400/40 hover:text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:text-white dark:hover:border-[#F3C623]/50"
+                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:border-red-400/40 hover:text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:text-white dark:hover:border-[#F3C623]/50"
                   >
                     {x.label}
                   </button>
@@ -178,8 +178,8 @@ export default function ChatBubble({ variant = "floating", align = "right" }: Ch
                   </button>
                 </div>
                 {showRules && (
-                  <div className="relative rounded-lg border border-blue-300/30 bg-blue-50/80 p-2 dark:border-[#F3C623]/30 dark:bg-[#F3C623]/10">
-                    <div className="absolute left-0 top-0 h-full w-1 rounded-l-lg bg-blue-400/60 dark:bg-[#F3C623]/60" aria-hidden />
+                  <div className="relative rounded-lg border border-red-300/30 bg-red-50/80 p-2 dark:border-[#F3C623]/30 dark:bg-[#F3C623]/10">
+                    <div className="absolute left-0 top-0 h-full w-1 rounded-l-lg bg-red-400/60 dark:bg-[#F3C623]/60" aria-hidden />
                     <div className="grid max-h-48 gap-2 overflow-y-auto pr-2 pl-2">
                       <div>
                         <div className="mb-1 font-medium text-slate-900 dark:text-slate-200">Supported actions</div>
@@ -231,13 +231,13 @@ export default function ChatBubble({ variant = "floating", align = "right" }: Ch
                   <div className="flex max-w-[85%] items-start gap-2">
                     {m.role === "assistant" && (
                       <div className="mt-1 hidden h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 sm:grid">
-                        <Bot className="h-3.5 w-3.5 text-blue-400 dark:text-[#F3C623]" />
+                        <Bot className="h-3.5 w-3.5 text-red-400 dark:text-[#F3C623]" />
                       </div>
                     )}
                     <div
                       className={
                         m.role === "user"
-                          ? "max-w-full rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 px-3 py-2 text-sm text-white shadow-md dark:from-[#F3C623] dark:to-[#D9A800]"
+                          ? "max-w-full rounded-2xl bg-gradient-to-br from-red-500 to-red-600 px-3 py-2 text-sm text-white shadow-md dark:from-[#F3C623] dark:to-[#D9A800]"
                           : "max-w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow dark:border-white/10 dark:bg-white/5 dark:text-slate-100"
                       }
                     >
@@ -260,7 +260,7 @@ export default function ChatBubble({ variant = "floating", align = "right" }: Ch
 
             {/* Input */}
             <div className="border-t border-slate-200/60 p-3 dark:border-white/10">
-              <div className="group flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-inner focus-within:border-blue-400/40 dark:border-white/10 dark:bg-white/5 dark:focus-within:border-[#F3C623]/50">
+              <div className="group flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-inner focus-within:border-red-400/40 dark:border-white/10 dark:bg-white/5 dark:focus-within:border-[#F3C623]/50">
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -274,7 +274,7 @@ export default function ChatBubble({ variant = "floating", align = "right" }: Ch
                   disabled={loading}
                   whileHover={{ scale: loading ? 1 : 1.05 }}
                   whileTap={{ scale: loading ? 1 : 0.95 }}
-                  className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow shadow-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:from-[#F3C623] dark:to-[#D9A800] dark:shadow-[#F3C623]/20"
+                  className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white shadow shadow-red-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:from-[#F3C623] dark:to-[#D9A800] dark:shadow-[#F3C623]/20"
                 >
                   {loading ? (
                     <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

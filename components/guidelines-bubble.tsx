@@ -41,7 +41,7 @@ export default function GuidelinesBubble() {
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2 text-sm font-semibold">
-                <BookOpen className="h-4 w-4 text-blue-500 dark:text-[#F3C623]" />
+                <BookOpen className="h-4 w-4 text-red-500 dark:text-[#F3C623]" />
                 Quick guidelines
               </div>
               <button onClick={() => setOpen(false)} className="p-1.5 text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white">

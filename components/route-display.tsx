@@ -101,9 +101,9 @@ const RouteCard: React.FC<{
     <Card 
       className={`cursor-pointer transition-all duration-200 ${
         isSelected 
-          ? 'ring-2 ring-[#113CFC] dark:ring-[#F3C623] bg-[#113CFC]/5 dark:bg-[#F3C623]/5' 
-          : 'hover:border-[#113CFC]/30 dark:hover:border-[#F3C623]/30'
-      } ${isBest ? 'border-[#113CFC]/50 dark:border-[#F3C623]/50' : ''}`}
+          ? 'ring-2 ring-[red-600] dark:ring-[#F3C623] bg-[red-600]/5 dark:bg-[#F3C623]/5' 
+          : 'hover:border-[red-600]/30 dark:hover:border-[#F3C623]/30'
+      } ${isBest ? 'border-[red-600]/50 dark:border-[#F3C623]/50' : ''}`}
       onClick={onSelect}
     >
       <CardContent className="p-4">
@@ -129,7 +129,7 @@ const RouteCard: React.FC<{
         <div className="mt-3 space-y-2">
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-600 dark:text-gray-400">Output:</span>
-            <span className="font-semibold text-[#113CFC] dark:text-[#F3C623]">
+            <span className="font-semibold text-[red-600] dark:text-[#F3C623]">
               {Number(formattedAmountOut).toLocaleString(undefined, { 
                 maximumFractionDigits: 6 
               })} {tokenOut}
@@ -188,7 +188,7 @@ export const RouteDisplay: React.FC<RouteDisplayProps> = ({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <div className="animate-spin w-4 h-4 border-2 border-[#113CFC] border-t-transparent rounded-full dark:border-[#F3C623]" />
+            <div className="animate-spin w-4 h-4 border-2 border-[red-600] border-t-transparent rounded-full dark:border-[#F3C623]" />
             Finding best routes...
           </CardTitle>
         </CardHeader>

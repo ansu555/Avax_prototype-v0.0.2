@@ -152,7 +152,7 @@ export function TopCryptocurrencies() {
       )}
 
       <div className="mt-6 text-center">
-        <Button asChild variant="outline" className="hover:border-[#113CFC]/50 hover:text-[#113CFC] dark:hover:border-[#F3C623]/30 dark:hover:text-[#F3C623]">
+        <Button asChild variant="outline" className="hover:border-[red-600]/50 hover:text-[red-600] dark:hover:border-[#F3C623]/30 dark:hover:text-[#F3C623]">
           <Link href="/cryptocurrencies">
             View All Cryptocurrencies
             <ChevronRight className="ml-2 h-4 w-4" />
@@ -269,38 +269,38 @@ function LoadingSkeleton({ view }: { view: "table" | "cards" }) {
 
 function CryptoTable({ cryptos }: { cryptos: Cryptocurrency[] }) {
   return (
-    <div className="rounded-md border border-gray-200/20 bg-gradient-to-br from-white to-[#113CFC]/5 dark:from-neutral-900 dark:to-[#F3C623]/5 dark:border-[#F3C623]/10 hover:shadow-[#113CFC]/10 dark:hover:shadow-[#F3C623]/20 overflow-hidden">
+    <div className="rounded-md border border-gray-200/20 bg-gradient-to-br from-white to-[red-600]/5 dark:from-neutral-900 dark:to-[#F3C623]/5 dark:border-[#F3C623]/10 hover:shadow-[red-600]/10 dark:hover:shadow-[#F3C623]/20 overflow-hidden">
       <div className="overflow-x-auto">
         <Table>
-          <TableHeader className="bg-[#113CFC]/10 dark:bg-[#F3C623]/10">
+          <TableHeader className="bg-[red-600]/10 dark:bg-[#F3C623]/10">
             <TableRow>
-              <TableHead className="w-[60px] text-[#113CFC]/80 dark:text-[#F3C623]/80 text-xs sm:text-sm">Rank</TableHead>
-              <TableHead className="text-[#113CFC]/80 dark:text-[#F3C623]/80 text-xs sm:text-sm min-w-[120px]">Name</TableHead>
-              <TableHead className="text-right text-[#113CFC]/80 dark:text-[#F3C623]/80 text-xs sm:text-sm min-w-[80px]">Price</TableHead>
-              <TableHead className="text-right text-[#113CFC]/80 dark:text-[#F3C623]/80 text-xs sm:text-sm min-w-[70px]">24h %</TableHead>
-              <TableHead className="text-right hidden lg:table-cell text-[#113CFC]/80 dark:text-[#F3C623]/80 text-xs sm:text-sm">Market Cap</TableHead>
-              <TableHead className="text-right hidden xl:table-cell text-[#113CFC]/80 dark:text-[#F3C623]/80 text-xs sm:text-sm">Volume (24h)</TableHead>
-              <TableHead className="text-center text-[#113CFC]/80 dark:text-[#F3C623]/80 text-xs sm:text-sm hidden sm:table-cell">
+              <TableHead className="w-[60px] text-[red-600]/80 dark:text-[#F3C623]/80 text-xs sm:text-sm">Rank</TableHead>
+              <TableHead className="text-[red-600]/80 dark:text-[#F3C623]/80 text-xs sm:text-sm min-w-[120px]">Name</TableHead>
+              <TableHead className="text-right text-[red-600]/80 dark:text-[#F3C623]/80 text-xs sm:text-sm min-w-[80px]">Price</TableHead>
+              <TableHead className="text-right text-[red-600]/80 dark:text-[#F3C623]/80 text-xs sm:text-sm min-w-[70px]">24h %</TableHead>
+              <TableHead className="text-right hidden lg:table-cell text-[red-600]/80 dark:text-[#F3C623]/80 text-xs sm:text-sm">Market Cap</TableHead>
+              <TableHead className="text-right hidden xl:table-cell text-[red-600]/80 dark:text-[#F3C623]/80 text-xs sm:text-sm">Volume (24h)</TableHead>
+              <TableHead className="text-center text-[red-600]/80 dark:text-[#F3C623]/80 text-xs sm:text-sm hidden sm:table-cell">
                 <Shield className="inline mr-1 h-3 w-3" />
                 Risk
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody className="bg-[#113CFC]/[0.02] dark:bg-[#F3C623]/[0.01]">
+          <TableBody className="bg-[red-600]/[0.02] dark:bg-[#F3C623]/[0.01]">
             {cryptos.map((crypto) => (
-              <TableRow key={crypto.id} className="hover:bg-[#113CFC]/5 dark:hover:bg-[#F3C623]/5 border-b border-[#113CFC]/5 dark:border-[#F3C623]/5 last:border-0">
+              <TableRow key={crypto.id} className="hover:bg-[red-600]/5 dark:hover:bg-[#F3C623]/5 border-b border-[red-600]/5 dark:border-[#F3C623]/5 last:border-0">
                 <TableCell className="font-medium text-xs sm:text-sm">{crypto.rank}</TableCell>
                 <TableCell className="min-w-[120px]">
                   <Link
                     href={`/cryptocurrencies/${crypto.id}`}
-                    className="flex items-center hover:text-[#113CFC] dark:hover:text-[#F3C623] transition-colors"
+                    className="flex items-center hover:text-[red-600] dark:hover:text-[#F3C623] transition-colors"
                   >
-                    <div className="w-6 h-6 sm:w-8 sm:h-8 bg-[#113CFC]/10 dark:bg-[#F3C623]/10 rounded-full mr-2 sm:mr-3 flex items-center justify-center text-xs font-mono text-[#113CFC] dark:text-[#F3C623]">
+                    <div className="w-6 h-6 sm:w-8 sm:h-8 bg-[red-600]/10 dark:bg-[#F3C623]/10 rounded-full mr-2 sm:mr-3 flex items-center justify-center text-xs font-mono text-[red-600] dark:text-[#F3C623]">
                       {crypto.symbol.substring(0, 2)}
                     </div>
                     <div>
                       <div className="font-medium text-xs sm:text-sm">{crypto.name}</div>
-                      <div className="text-xs text-[#113CFC]/60 dark:text-[#F3C623]/60">{crypto.symbol}</div>
+                      <div className="text-xs text-[red-600]/60 dark:text-[#F3C623]/60">{crypto.symbol}</div>
                     </div>
                   </Link>
                 </TableCell>
@@ -348,19 +348,19 @@ function CryptoCards({ cryptos }: { cryptos: Cryptocurrency[] }) {
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {cryptos.map((crypto) => (
         <Link key={crypto.id} href={`/cryptocurrencies/${crypto.id}`}>
-          <Card className="overflow-hidden hover:border-[#113CFC]/50 dark:hover:border-[#F3C623]/30 hover:shadow-md hover:shadow-[#113CFC]/10 dark:hover:shadow-[#F3C623]/15 transition-all">
+          <Card className="overflow-hidden hover:border-[red-600]/50 dark:hover:border-[#F3C623]/30 hover:shadow-md hover:shadow-[red-600]/10 dark:hover:shadow-[#F3C623]/15 transition-all">
             <CardHeader className="pb-2">
               <div className="flex justify-between items-start">
                 <div className="flex items-center">
-                  <div className="w-8 h-8 bg-[#113CFC]/10 dark:bg-[#F3C623]/10 rounded-full mr-3 flex items-center justify-center text-xs font-mono text-[#113CFC] dark:text-[#F3C623]">
+                  <div className="w-8 h-8 bg-[red-600]/10 dark:bg-[#F3C623]/10 rounded-full mr-3 flex items-center justify-center text-xs font-mono text-[red-600] dark:text-[#F3C623]">
                     {crypto.symbol.substring(0, 3)}
                   </div>
                   <div>
-                    <CardTitle className="text-[#113CFC] dark:text-[#F3C623]">{crypto.name}</CardTitle>
-                    <CardDescription className="text-[#113CFC]/60 dark:text-[#F3C623]/60">{crypto.symbol}</CardDescription>
+                    <CardTitle className="text-[red-600] dark:text-[#F3C623]">{crypto.name}</CardTitle>
+                    <CardDescription className="text-[red-600]/60 dark:text-[#F3C623]/60">{crypto.symbol}</CardDescription>
                   </div>
                 </div>
-                <div className="text-sm font-medium text-[#113CFC] dark:text-[#F3C623]">#{crypto.rank}</div>
+                <div className="text-sm font-medium text-[red-600] dark:text-[#F3C623]">#{crypto.rank}</div>
               </div>
             </CardHeader>
             <CardContent>
@@ -384,12 +384,12 @@ function CryptoCards({ cryptos }: { cryptos: Cryptocurrency[] }) {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-medium text-[#113CFC]/80 dark:text-[#F3C623]/80">Market Cap</div>
-                  <div className="text-sm text-[#113CFC]/60 dark:text-[#F3C623]/60">${(crypto.marketCap / 1000000000).toFixed(1)}B</div>
+                  <div className="text-sm font-medium text-[red-600]/80 dark:text-[#F3C623]/80">Market Cap</div>
+                  <div className="text-sm text-[red-600]/60 dark:text-[#F3C623]/60">${(crypto.marketCap / 1000000000).toFixed(1)}B</div>
                 </div>
               </div>
               <div className="mt-3 flex justify-between items-center">
-                <div className="text-xs text-[#113CFC]/60 dark:text-[#F3C623]/60">Risk Level:</div>
+                <div className="text-xs text-[red-600]/60 dark:text-[#F3C623]/60">Risk Level:</div>
                 <RiskBadge risk={crypto.riskLevel} size="xs" />
               </div>
             </CardContent>

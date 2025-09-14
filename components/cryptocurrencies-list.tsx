@@ -388,7 +388,7 @@ export function CryptocurrenciesList() {
                           href={`/cryptocurrencies/${crypto.id}`}
                           className="flex items-center hover:text-primary dark:hover:text-[#F3C623] transition-colors"
                         >
-                          <div className="w-8 h-8 bg-[#113CFC]/10 dark:bg-[#F3C623]/10 rounded-full mr-3 flex items-center justify-center text-xs font-mono text-[#113CFC] dark:text-[#F3C623]">
+                          <div className="w-8 h-8 bg-[red-600]/10 dark:bg-[#F3C623]/10 rounded-full mr-3 flex items-center justify-center text-xs font-mono text-[red-600] dark:text-[#F3C623]">
   {crypto.symbol.substring(0, 3)}
 </div>
                           <div>

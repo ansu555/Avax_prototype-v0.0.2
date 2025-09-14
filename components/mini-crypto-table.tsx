@@ -191,7 +191,7 @@ export function MiniCryptoTable({
         <TableCell className="font-medium py-2">{c.rank}</TableCell>
         <TableCell className="py-2">
                       <div className="flex items-center">
-                        <div className="w-7 h-7 bg-[#113CFC]/10 dark:bg-[#F3C623]/10 rounded-full mr-2 flex items-center justify-center text-[10px] font-mono text-[#113CFC] dark:text-[#F3C623]">
+                        <div className="w-7 h-7 bg-[red-600]/10 dark:bg-[#F3C623]/10 rounded-full mr-2 flex items-center justify-center text-[10px] font-mono text-[red-600] dark:text-[#F3C623]">
                           {c.symbol.substring(0, 3)}
                         </div>
                         <div>
