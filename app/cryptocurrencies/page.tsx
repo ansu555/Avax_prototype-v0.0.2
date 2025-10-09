@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { Footer } from "@/components/footer"
 import BackgroundPaths from "@/components/animated-background"
 import CoinOverviewPane from "@/components/coin-overview-pane"
 import MiniCryptoTable from "@/components/mini-crypto-table"
@@ -33,7 +32,6 @@ export default function CryptocurrenciesPage() {
           </aside>
         </div>
       </main>
-      <Footer />
     </div>
   )
 }

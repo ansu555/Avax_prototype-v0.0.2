@@ -1,4 +1,3 @@
-import { Footer } from "@/components/footer"
 import { ExchangeDetail } from "@/components/exchange-detail"
 
 export default async function ExchangeDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -8,7 +7,6 @@ export default async function ExchangeDetailPage({ params }: { params: Promise<{
       <main className="flex-1 container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <ExchangeDetail id={id} />
       </main>
-      <Footer />
     </div>
   )
 }
