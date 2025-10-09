@@ -20,7 +20,7 @@ export function Web3Providers({ children }: { children: ReactNode }) {
             '--ck-border-radius': '8px',
             '--ck-background': '#f5f5f5',
           }}
-          options={{ embedGoogleFonts: true }}
+          options={{ embedGoogleFonts: false }}
         >
           {children}
         </ConnectKitProvider>
