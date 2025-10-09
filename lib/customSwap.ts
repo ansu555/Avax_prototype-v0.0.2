@@ -33,8 +33,8 @@ export async function reconstructRouteFromId(
     }
     
     // Reconstruct token path by following pool connections
-    const tokenInInfo = resolveTokenBySymbol(tokenIn)
-    const tokenOutInfo = resolveTokenBySymbol(tokenOut)
+    const tokenInInfo = resolveTokenBySymbol(tokenIn, 43113) // Always use Fuji for custom swaps
+    const tokenOutInfo = resolveTokenBySymbol(tokenOut, 43113)
     if (!tokenInInfo || !tokenOutInfo) return null
     
     const tokens = [tokenInInfo]

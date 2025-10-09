@@ -25,10 +25,18 @@ function toUnits(amount: string, decimals: number): bigint {
 }
 
 const pools: Pool[] = (() => {
-  const WAVAX = resolveTokenBySymbol('WAVAX')!
-  const USDC = resolveTokenBySymbol('USDC')!
-  const WETH = resolveTokenBySymbol('WETH.e') || resolveTokenBySymbol('WETH')!
-  const USDT = resolveTokenBySymbol('USDT.e') || resolveTokenBySymbol('USDT')!
+  // Always use Fuji testnet (43113) for pool definitions since routing is currently Fuji-focused
+  const chainId = 43113
+  const WAVAX = resolveTokenBySymbol('WAVAX', chainId)
+  const USDC = resolveTokenBySymbol('USDC', chainId)
+  const WETH = resolveTokenBySymbol('WETH.e', chainId) || resolveTokenBySymbol('WETH', chainId)
+  const USDT = resolveTokenBySymbol('USDT.e', chainId) || resolveTokenBySymbol('USDT', chainId)
+
+  // Guard against missing tokens during build time
+  if (!WAVAX || !USDC || !WETH || !USDT) {
+    console.warn('Some tokens not found during pool initialization:', { WAVAX, USDC, WETH, USDT })
+    return []
+  }
 
   // Virtual liquidity assumption (adjust once real data available)
   // Aim: make small trades show tiny price impact while large trades move price.

@@ -4,17 +4,16 @@ import { resolveTokenBySymbol } from "@/lib/tokens";
 import { Agent } from '@/lib/agent';
 import { createPublicClient, http, formatUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { avalanche } from "viem/chains";
+import { avalanche, avalancheFuji } from "viem/chains";
 import { AgentkitToolkit } from "@0xgasless/agentkit";
 
 export const runtime = "nodejs";
 
-// GET: optionally accepts ?symbols=ETH,USDC,WBTC,AVAX
+// GET: optionally accepts ?symbols=AVAX,USDC,WAVAX
 export async function GET(req: Request) {
   try {
   const requested = parseSymbolsFromReq(req);
-    const symbols = requested.length ? requested : ['ETH', 'USDC', 'WBTC', 'AVAX'];
-    const baseSymbols = symbols.filter((s) => s.toUpperCase() !== 'AVAX');
+    const symbols = requested.length ? requested : ['AVAX', 'USDC', 'WAVAX'];
   // optional explicit address (use connected wallet EOA)
   const url = new URL(req.url);
   const explicitAddress = url.searchParams.get('address') || undefined;
@@ -25,55 +24,37 @@ export async function GET(req: Request) {
     const find = (name: string) => tools.find((t: any) => (t?.name || '').toLowerCase() === name.toLowerCase());
     const toolResults: Record<string, any> = {};
 
-    // 1) switch_network -> Base (8453)
-    try { await find('switch_network')?.invoke({ chainId: 8453 }); toolResults.switchBase = 'ok'; } catch (e: any) { toolResults.switchBase = String(e?.message||e); }
-    // 2) get_balance for Base
-    try { toolResults.baseBalances = await find('get_balance')?.invoke({ tokenSymbols: baseSymbols }); } catch (e: any) { toolResults.baseBalances = String(e?.message||e); }
-    // 3) get_gas_estimate (if available)
-    try { toolResults.gas = await find('get_gas_estimate')?.invoke({}); } catch (e: any) { toolResults.gas = String(e?.message||e); }
-    // 4) switch_network -> Avalanche (43114)
-    const avaxRequested = symbols.some((s) => s.toUpperCase() === 'AVAX');
-    if (avaxRequested) {
-      try { await find('switch_network')?.invoke({ chainId: 43114 }); toolResults.switchAvax = 'ok'; } catch (e: any) { toolResults.switchAvax = String(e?.message||e); }
+    // Get balances using toolkit
+    try { 
+      toolResults.balances = await find('get_balance')?.invoke({ tokenSymbols: symbols }); 
+    } catch (e: any) { 
+      toolResults.balances = String(e?.message||e); 
     }
-    // 5) get_balance for AVAX
-    let avaxItem: BalanceItem | null = null;
-    try {
-      if (avaxRequested) {
-        const out = await find('get_balance')?.invoke({ tokenSymbols: ['AVAX'] });
-        toolResults.avaxBalances = out;
-      }
-    } catch (e: any) { toolResults.avaxBalances = String(e?.message||e); }
-
-    // Fallback structured balances from our local logic (also return which address was used)
-  const baseResult = await getBaseBalances(baseSymbols, explicitAddress);
-    // Ensure AVAX native balance is included when requested. Prefer the toolkit result but always add our reliable native read as an item
-    if (avaxRequested) {
-      try {
-        avaxItem = await getAvalancheNativeBalance(explicitAddress);
-      } catch (e: any) {
-        console.warn('Failed to read AVAX native balance fallback:', e?.message || e)
-        avaxItem = null
-      }
-    }
-    // If AVAX was requested, also include common Avalanche ERC-20 balances (WAVAX, USDC) using a chain-specific agent
-    let avaxTokenItems: BalanceItem[] = []
-  if (avaxRequested) {
-      try {
-    avaxTokenItems = await getAvalancheERC20Balances(symbols, explicitAddress);
-      } catch (e: any) {
-        console.warn('Failed to read Avalanche ERC-20 balances:', e?.message || e)
-        avaxTokenItems = []
-      }
+    
+    // Get gas estimate
+    try { 
+      toolResults.gas = await find('get_gas_estimate')?.invoke({}); 
+    } catch (e: any) { 
+      toolResults.gas = String(e?.message||e); 
     }
 
-    const items = [...baseResult.items, ...avaxTokenItems, ...(avaxItem ? [avaxItem] : [])];
+    // Fallback structured balances from our local logic
+  const avalancheResult = await getAvalancheBalances(symbols, explicitAddress);
+    
+    const items = avalancheResult.items;
     const lines = [
       'Balances:',
       ...items.map((i) => `${i.network.toUpperCase()} ${i.symbol}: ${i.amount}`),
     ].join('\n');
 
-  return NextResponse.json({ ok: true, balances: lines, items, toolResults, addressUsed: baseResult.address, isSmartAccountUsed: baseResult.isSmart });
+  return NextResponse.json({ 
+    ok: true, 
+    balances: lines, 
+    items, 
+    toolResults, 
+    addressUsed: avalancheResult.address, 
+    isSmartAccountUsed: avalancheResult.isSmart 
+  });
   } catch (e: any) {
     console.error("Balance GET error:", e);
     const msg = e instanceof Error ? e.message : String(e);
@@ -87,21 +68,24 @@ export async function POST(req: Request) {
     const requested: string[] = Array.isArray(body.tokenSymbols)
       ? body.tokenSymbols.map((s: string) => s.trim()).filter(Boolean)
       : [];
-    const symbols = requested.length ? requested : ["ETH", "USDC", "WBTC", "AVAX"];
-    const baseSymbols = symbols.filter((s) => s.toUpperCase() !== 'AVAX');
+    const symbols = requested.length ? requested : ["AVAX", "USDC", "WAVAX"];
   const explicitAddress = typeof body.address === 'string' && body.address ? body.address : undefined;
 
-  const baseResult = await getBaseBalances(baseSymbols, explicitAddress);
-  const avaxRequested = symbols.some((s) => s.toUpperCase() === 'AVAX');
-  const avaxItem = avaxRequested ? await getAvalancheNativeBalance(explicitAddress) : null;
-
-    const items = [...baseResult.items, ...(avaxItem ? [avaxItem] : [])];
+  const avalancheResult = await getAvalancheBalances(symbols, explicitAddress);
+  
+    const items = avalancheResult.items;
     const lines = [
       'Balances:',
       ...items.map((i) => `${i.network.toUpperCase()} ${i.symbol}: ${i.amount}`),
     ].join('\n');
 
-    return NextResponse.json({ ok: true, balances: lines, items, addressUsed: baseResult.address, isSmartAccountUsed: baseResult.isSmart });
+    return NextResponse.json({ 
+      ok: true, 
+      balances: lines, 
+      items, 
+      addressUsed: avalancheResult.address, 
+      isSmartAccountUsed: avalancheResult.isSmart 
+    });
   } catch (e: any) {
     console.error("Balance error:", e);
     const msg = e instanceof Error ? e.message : String(e);
@@ -153,48 +137,107 @@ function formatTo4(amount: string): string {
   }
 }
 
-async function getBaseBalances(symbols: string[], explicitAddress?: string): Promise<{ items: BalanceItem[]; address: string; isSmart: boolean }> {
-  const { getSmartAddressOrNull, getEOAAddress, getBalance } = await getAgent();
-  // If caller provided an explicit address (connected wallet), use it directly
-  if (explicitAddress) {
+async function getAvalancheBalances(symbols: string[], explicitAddress?: string): Promise<{ items: BalanceItem[]; address: string; isSmart: boolean }> {
+  // Try to get agent for the appropriate chain (prefer mainnet, fallback to testnet)
+  let chainId = 43114; // Avalanche mainnet
+  try {
+    // Try mainnet first
+    const { getSmartAddressOrNull, getEOAAddress, getBalance } = await getAgent(chainId);
+    
+    // If caller provided an explicit address (connected wallet), use it directly
+    if (explicitAddress) {
+      const out: BalanceItem[] = [];
+      for (const symRaw of symbols) {
+        const sym = symRaw.toUpperCase();
+        const token = resolveTokenBySymbol(sym, chainId);
+        if (!token) continue;
+        let amtRaw = '0'
+        try {
+          amtRaw = await getBalance(token.address === 'AVAX' ? undefined : (token.address as any), explicitAddress as any)
+        } catch (err: any) {
+          console.warn(`Failed to read balance for ${sym} (${token.address}) for explicit address ${explicitAddress}: ${String(err?.message||err)}`)
+          amtRaw = '0'
+        }
+        out.push({ symbol: sym, amount: formatTo4(amtRaw), network: 'avalanche' });
+      }
+      return { items: out, address: explicitAddress, isSmart: false };
+    }
+
+    const smartAddr = await getSmartAddressOrNull();
+    const eoaAddr = await getEOAAddress();
+    const addr = smartAddr || eoaAddr;
+    const isSmart = Boolean(smartAddr && smartAddr !== eoaAddr);
     const out: BalanceItem[] = [];
+    
     for (const symRaw of symbols) {
       const sym = symRaw.toUpperCase();
-      const token = resolveTokenBySymbol(sym, 8453);
-      if (!token) continue;
+      const token = resolveTokenBySymbol(sym, chainId);
+      if (!token) {
+        continue; // unknown on Avalanche
+      }
       let amtRaw = '0'
       try {
-        amtRaw = await getBalance(token.address === 'ETH' ? undefined : (token.address as any), explicitAddress as any)
+        amtRaw = await getBalance(token.address === 'AVAX' ? undefined : (token.address as any), addr as any)
       } catch (err: any) {
-        console.warn(`Failed to read balance for ${sym} (${token.address}) for explicit address ${explicitAddress}: ${String(err?.message||err)}`)
+        console.warn(`Failed to read balance for ${sym} (${token.address}): ${String(err?.message||err)}`)
         amtRaw = '0'
       }
-      out.push({ symbol: sym, amount: formatTo4(amtRaw), network: 'base' });
+      out.push({ symbol: sym, amount: formatTo4(amtRaw), network: 'avalanche' });
     }
-    return { items: out, address: explicitAddress, isSmart: false };
-  }
-
-  const smartAddr = await getSmartAddressOrNull();
-  const eoaAddr = await getEOAAddress();
-  const addr = smartAddr || eoaAddr;
-  const isSmart = Boolean(smartAddr && smartAddr !== eoaAddr);
-  const out: BalanceItem[] = [];
-  for (const symRaw of symbols) {
-    const sym = symRaw.toUpperCase();
-  const token = resolveTokenBySymbol(sym, 8453);
-    if (!token) {
-      continue; // unknown on Base
-    }
-    let amtRaw = '0'
+    return { items: out, address: addr, isSmart };
+    
+  } catch (mainnetError: any) {
+    console.warn('Avalanche mainnet failed, trying testnet:', mainnetError?.message);
+    
+    // Fallback to testnet
     try {
-      amtRaw = await getBalance(token.address === 'ETH' ? undefined : (token.address as any), addr as any)
-    } catch (err: any) {
-      console.warn(`Failed to read balance for ${sym} (${token.address}): ${String(err?.message||err)}`)
-      amtRaw = '0'
+      chainId = 43113; // Avalanche Fuji testnet
+      const { getSmartAddressOrNull, getEOAAddress, getBalance } = await getAgent(chainId);
+      
+      if (explicitAddress) {
+        const out: BalanceItem[] = [];
+        for (const symRaw of symbols) {
+          const sym = symRaw.toUpperCase();
+          const token = resolveTokenBySymbol(sym, chainId);
+          if (!token) continue;
+          let amtRaw = '0'
+          try {
+            amtRaw = await getBalance(token.address === 'AVAX' ? undefined : (token.address as any), explicitAddress as any)
+          } catch (err: any) {
+            console.warn(`Failed to read testnet balance for ${sym}: ${String(err?.message||err)}`)
+            amtRaw = '0'
+          }
+          out.push({ symbol: sym, amount: formatTo4(amtRaw), network: 'avalanche-fuji' });
+        }
+        return { items: out, address: explicitAddress, isSmart: false };
+      }
+
+      const smartAddr = await getSmartAddressOrNull();
+      const eoaAddr = await getEOAAddress();
+      const addr = smartAddr || eoaAddr;
+      const isSmart = Boolean(smartAddr && smartAddr !== eoaAddr);
+      const out: BalanceItem[] = [];
+      
+      for (const symRaw of symbols) {
+        const sym = symRaw.toUpperCase();
+        const token = resolveTokenBySymbol(sym, chainId);
+        if (!token) continue;
+        let amtRaw = '0'
+        try {
+          amtRaw = await getBalance(token.address === 'AVAX' ? undefined : (token.address as any), addr as any)
+        } catch (err: any) {
+          console.warn(`Failed to read testnet balance for ${sym}: ${String(err?.message||err)}`)
+          amtRaw = '0'
+        }
+        out.push({ symbol: sym, amount: formatTo4(amtRaw), network: 'avalanche-fuji' });
+      }
+      return { items: out, address: addr, isSmart };
+      
+    } catch (testnetError: any) {
+      console.error('Both Avalanche mainnet and testnet failed:', testnetError?.message);
+      throw new Error(`Failed to connect to Avalanche networks: ${testnetError?.message}`);
     }
-    out.push({ symbol: sym, amount: formatTo4(amtRaw), network: 'base' });
   }
-  return { items: out, address: addr, isSmart };
 }
 
 async function getAvalancheNativeBalance(explicitAddress?: string): Promise<BalanceItem | null> {

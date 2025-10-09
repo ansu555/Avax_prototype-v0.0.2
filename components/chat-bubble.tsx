@@ -53,9 +53,9 @@ export default function ChatBubble({ variant = "floating", align = "right" }: Ch
 
   const typing = loading
 
-  const chainLabel = chainId === 8453 ? 'Base' : chainId === 43114 ? 'Avalanche' : 'Avalanche Fuji'
-  const explorerBase = chainId === 8453 ? 'https://basescan.org' : (chainId === 43114 ? 'https://snowtrace.io' : 'https://testnet.snowtrace.io')
-  const nativeSymbol = (chainId === 43113 || chainId === 43114) ? 'AVAX' : 'ETH'
+  const chainLabel = chainId === 43114 ? 'Avalanche' : 'Avalanche Fuji'
+  const explorerBase = (chainId === 43114 ? 'https://snowtrace.io' : 'https://testnet.snowtrace.io')
+  const nativeSymbol = 'AVAX'
 
   const renderContent = (text: string) => {
     const re = /(0x[a-fA-F0-9]{64})|(0x[a-fA-F0-9]{40})/g

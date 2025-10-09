@@ -110,9 +110,9 @@ export function findBestRouteQuote(tokenIn: TokenInfo, tokenOut: TokenInfo, amou
 }
 
 // Convenience: resolve symbols then call findBestRouteQuote.
-export function findBestRouteQuoteBySymbol(tokenInSymbol: string, tokenOutSymbol: string, amountIn: bigint, maxHops: number): RouteQuote | null {
-  const tIn = resolveTokenBySymbol(tokenInSymbol)
-  const tOut = resolveTokenBySymbol(tokenOutSymbol)
+export function findBestRouteQuoteBySymbol(tokenInSymbol: string, tokenOutSymbol: string, amountIn: bigint, maxHops: number, chainId = 43113): RouteQuote | null {
+  const tIn = resolveTokenBySymbol(tokenInSymbol, chainId)
+  const tOut = resolveTokenBySymbol(tokenOutSymbol, chainId)
   if (!tIn || !tOut) return null
   return findBestRouteQuote(tIn, tOut, amountIn, maxHops)
 }

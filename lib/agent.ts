@@ -1,6 +1,6 @@
  import 'server-only'
 import { createPublicClient, createWalletClient, http, parseUnits, formatUnits, erc20Abi } from 'viem'
-import { avalanche, avalancheFuji, base } from 'viem/chains'
+import { avalanche, avalancheFuji } from 'viem/chains'
 import type { Address, Chain } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { Agentkit } from '@0xgasless/agentkit'
@@ -15,10 +15,9 @@ function getEnv(name: string, required = true): string | undefined {
   return v
 }
 
-// Chain selection: default to Avalanche Fuji unless CHAIN_ID selects Base or Avalanche mainnet
+// Chain selection: default to Avalanche Fuji unless CHAIN_ID selects Avalanche mainnet
 function getChain(): Chain {
   const id = Number(process.env.CHAIN_ID || 43113)
-  if (id === 8453) return base
   if (id === 43114) return avalanche
   return avalancheFuji
 }
@@ -33,29 +32,26 @@ async function buildAgent(chainIdOverride?: number) {
   const PRIVATE_KEY = (PK_RAW.startsWith('0x') ? PK_RAW : `0x${PK_RAW}`) as `0x${string}`
   // Dynamic runtime; defaults to Fuji if CHAIN_ID not provided
   const CHAIN_ID = Number((chainIdOverride ?? process.env.CHAIN_ID) || 43113)
-  const chain = CHAIN_ID === 8453 ? base : (CHAIN_ID === 43114 ? avalanche : avalancheFuji)
+  const chain = CHAIN_ID === 43114 ? avalanche : avalancheFuji
 
   // Chain-specific RPCs
   const rpcByChain: Record<number, string | undefined> = {
-    8453: process.env.RPC_URL_BASE,
     43113: process.env.RPC_URL_FUJI,
     43114: process.env.RPC_URL_AVALANCHE,
   }
   const RPC_RAW = rpcByChain[CHAIN_ID] || process.env.RPC_URL
-  if (!RPC_RAW) throw new Error('Missing RPC_URL for selected chain. Provide RPC_URL_BASE, RPC_URL_FUJI, or RPC_URL_AVALANCHE.')
+  if (!RPC_RAW) throw new Error('Missing RPC_URL for selected chain. Provide RPC_URL_FUJI or RPC_URL_AVALANCHE.')
   const RPC_URL = (RPC_RAW.startsWith('http://') || RPC_RAW.startsWith('https://')) ? RPC_RAW : `https://${RPC_RAW}`
 
   // Chain-specific GASLESS API key and paymaster
   const apiKeyByChain: Record<number, string | undefined> = {
-    8453: process.env.GASLESS_API_KEY_BASE || process.env.GASLESS_API_KEY,
     43113: process.env.GASLESS_API_KEY_FUJI || process.env.GASLESS_API_KEY,
     43114: process.env.GASLESS_API_KEY_AVALANCHE || process.env.GASLESS_API_KEY,
   }
   const GASLESS_API_KEY = apiKeyByChain[CHAIN_ID]
-  if (!GASLESS_API_KEY) throw new Error('Missing GASLESS_API_KEY for selected chain. Provide GASLESS_API_KEY_{BASE|FUJI|AVALANCHE} or GASLESS_API_KEY.')
+  if (!GASLESS_API_KEY) throw new Error('Missing GASLESS_API_KEY for selected chain. Provide GASLESS_API_KEY_FUJI, GASLESS_API_KEY_AVALANCHE, or GASLESS_API_KEY.')
 
   const paymasterByChain: Record<number, string | undefined> = {
-    8453: process.env.GASLESS_PAYMASTER_URL_BASE || process.env.GASLESS_PAYMASTER_URL,
     43113: process.env.GASLESS_PAYMASTER_URL_FUJI || process.env.GASLESS_PAYMASTER_URL,
     43114: process.env.GASLESS_PAYMASTER_URL_AVALANCHE || process.env.GASLESS_PAYMASTER_URL,
   }
@@ -66,22 +62,14 @@ async function buildAgent(chainIdOverride?: number) {
     if (lowerUrl.includes('infura.io') && !/\/v3\//i.test(RPC_URL)) {
       throw new Error(
         `RPC_URL appears to be an Infura endpoint but is missing '/v3/<PROJECT_ID>'. ` +
-        `Use the full URL, e.g. https://base-mainnet.infura.io/v3/YOUR_PROJECT_ID (Base mainnet) ` +
-        `or https://base-sepolia.infura.io/v3/YOUR_PROJECT_ID (Base Sepolia).`
+        `Use the full URL, e.g. https://avalanche-mainnet.infura.io/v3/YOUR_PROJECT_ID (Avalanche mainnet) ` +
+        `or https://avalanche-fuji.infura.io/v3/YOUR_PROJECT_ID (Avalanche testnet).`
       )
     }
     if (lowerUrl.includes('alchemy.com') && !/\/v2\//i.test(RPC_URL)) {
       throw new Error(
         `RPC_URL appears to be an Alchemy endpoint but is missing '/v2/<API_KEY>'. ` +
-        `Use the full URL, e.g. https://base-mainnet.g.alchemy.com/v2/YOUR_API_KEY (Base mainnet) ` +
-        `or https://base-sepolia.g.alchemy.com/v2/YOUR_API_KEY (Base Sepolia).`
-      )
-    }
-    if (/(^https?:\/\/)?base-mainnet\.infura\.io\/?$/i.test(RPC_URL)) {
-      // Specific helpful nudge for the 404 the user hit
-      throw new Error(
-        `RPC_URL 'https://base-mainnet.infura.io' is incomplete and will 404. ` +
-        `Include your project path: https://base-mainnet.infura.io/v3/YOUR_PROJECT_ID.`
+        `Use the full URL for Avalanche endpoints.`
       )
     }
 
@@ -95,7 +83,7 @@ async function buildAgent(chainIdOverride?: number) {
     try {
       const rpcChainId = await publicClient.getChainId()
     if (rpcChainId !== chain.id) {
-  const name = chain.id === 8453 ? 'Base' : chain.id === 43114 ? 'Avalanche' : 'Avalanche Fuji'
+  const name = chain.id === 43114 ? 'Avalanche' : 'Avalanche Fuji'
         throw new Error(
           `RPC chainId ${rpcChainId} does not match expected ${chain.id} (${name}). ` +
           `Check CHAIN_ID and RPC_URL.`
@@ -106,7 +94,7 @@ async function buildAgent(chainIdOverride?: number) {
       throw new Error(
         `RPC_URL check failed: ${msg}. ` +
         `If using Infura, ensure the URL includes '/v3/PROJECT_ID'. ` +
-        `Examples: https://mainnet.base.org (no key), https://base-mainnet.infura.io/v3/KEY, https://base-mainnet.g.alchemy.com/v2/KEY.`
+        `Examples: https://api.avax.network/ext/bc/C/rpc (Avalanche mainnet).`
       )
     }
 
@@ -276,7 +264,7 @@ async function buildAgent(chainIdOverride?: number) {
           if (wait) await publicClient.waitForTransactionReceipt({ hash: tx as `0x${string}` })
           return { hash: tx as string, details: { tokenAddress, amount, destination, wait } }
         } else {
-          // Native ETH transfer via smart account
+          // Native AVAX transfer via smart account
           const value = parseUnits(amount, 18)
           const tx = await sa.sendTransaction({ to: destination, value })
           if (wait) await publicClient.waitForTransactionReceipt({ hash: tx as `0x${string}` })
@@ -313,21 +301,20 @@ async function buildAgent(chainIdOverride?: number) {
       }
     }
 
-    // Swap is chain-aware. Enabled on Base and Avalanche mainnet (via 0x); disabled on Fuji.
+    // Swap is chain-aware. Enabled on Avalanche mainnet only (via 0x); disabled on Fuji.
     async function smartSwap(opts: { tokenInSymbol: string; tokenOutSymbol: string; amount: string; slippage?: number; wait?: boolean }): Promise<{ hash: string; details: any }> {
       if (chain.id === 43113) {
         throw new Error('Swap is not available on Avalanche Fuji in this app')
       }
-      const isBase = chain.id === 8453
       const isAvax = chain.id === 43114
-      if (!isBase && !isAvax) throw new Error('Unsupported chain for swap')
+      if (!isAvax) throw new Error('Unsupported chain for swap - only Avalanche mainnet is supported')
 
-      const ZEROX_URL = isBase ? 'https://base.api.0x.org/swap/v1/quote' : 'https://avalanche.api.0x.org/swap/v1/quote'
+      const ZEROX_URL = 'https://avalanche.api.0x.org/swap/v1/quote'
       const tokenIn = resolveTokenBySymbol(opts.tokenInSymbol, chain.id)
       const tokenOut = resolveTokenBySymbol(opts.tokenOutSymbol, chain.id)
-      if (!tokenIn || !tokenOut) throw new Error(`Unsupported token symbol for ${isBase ? 'Base' : 'Avalanche'}`)
+      if (!tokenIn || !tokenOut) throw new Error(`Unsupported token symbol for Avalanche`)
       const from = await getAddress()
-      const nativeIn = isBase ? 'ETH' : 'AVAX'
+      const nativeIn = 'AVAX'
       const addrIn = tokenIn.address === nativeIn ? nativeIn : (tokenIn.address as string)
       const addrOut = tokenOut.address === nativeIn ? nativeIn : (tokenOut.address as string)
       const amountIn = parseUnits(opts.amount, tokenIn.decimals).toString()
@@ -379,8 +366,8 @@ async function buildAgent(chainIdOverride?: number) {
 
     function getChainInfo() {
   const chainId = chain.id
-  const chainName = ({ 8453: 'Base', 43113: 'Avalanche Fuji', 43114: 'Avalanche' } as Record<number, string>)[chainId] || `Chain ${chainId}`
-  const nativeSymbol = (chainId === 43113 || chainId === 43114) ? 'AVAX' : 'ETH'
+  const chainName = ({ 43113: 'Avalanche Fuji', 43114: 'Avalanche' } as Record<number, string>)[chainId] || `Chain ${chainId}`
+  const nativeSymbol = 'AVAX'
       return { chainId, chainName, nativeSymbol }
     }
 
@@ -458,7 +445,7 @@ async function buildAgent(chainIdOverride?: number) {
             from: await getAddress(),
             to: destination,
             amount,
-            token: tokenAddress ? 'ERC-20' : 'ETH',
+            token: tokenAddress ? 'ERC-20' : 'AVAX',
             priority,
             gasOptimized: true,
             timestamp: new Date().toISOString()
@@ -476,22 +463,22 @@ async function buildAgent(chainIdOverride?: number) {
         if (!sa) throw new Error('Smart account not available')
         
         // Group transfers by token type for efficiency
-        const ethTransfers = transfers.filter(t => !t.tokenAddress)
+        const avaxTransfers = transfers.filter(t => !t.tokenAddress)
         const tokenTransfers = transfers.filter(t => t.tokenAddress)
         
         let totalHash = ''
         const results = []
         
-        // Execute ETH transfers in batch
-        if (ethTransfers.length > 0) {
-          const totalEth = ethTransfers.reduce((sum, t) => sum + parseFloat(t.amount), 0)
-          const ethResult = await smartTransfer({ 
-            amount: totalEth.toString(), 
-            destination: ethTransfers[0].destination, // Send to first destination
+        // Execute AVAX transfers in batch
+        if (avaxTransfers.length > 0) {
+          const totalAvax = avaxTransfers.reduce((sum, t) => sum + parseFloat(t.amount), 0)
+          const avaxResult = await smartTransfer({ 
+            amount: totalAvax.toString(), 
+            destination: avaxTransfers[0].destination, // Send to first destination
             wait: false 
           })
-          totalHash = ethResult.hash
-          results.push({ type: 'ETH', hash: ethResult.hash, count: ethTransfers.length })
+          totalHash = avaxResult.hash
+          results.push({ type: 'AVAX', hash: avaxResult.hash, count: avaxTransfers.length })
         }
         
         // Execute token transfers
@@ -586,7 +573,7 @@ async function buildAgent(chainIdOverride?: number) {
           // For ERC-20 tokens, try to swap other tokens to get the required amount
           const availableTokens = await getPortfolioOverview()
           const targetToken = resolveTokenBySymbol('USDC', chain.id) // Default to USDC
-          const nativeSentinel = chain.id === 43113 ? 'AVAX' : 'ETH'
+          const nativeSentinel = 'AVAX'
           
           if (targetToken && targetToken.address !== nativeSentinel) {
             const targetBalance = await getBalance(targetToken.address as Address)
@@ -607,11 +594,11 @@ async function buildAgent(chainIdOverride?: number) {
         } else {
           // For native, try to swap other tokens to native
           const portfolio = await getPortfolioOverview()
-          const nativeSym = chain.id === 43113 ? 'AVAX' : 'ETH'
-          const nonEthAssets = portfolio.assets.filter((asset: any) => asset.symbol !== nativeSym && asset.valueUSD > 5)
+          const nativeSym = 'AVAX'
+          const nonAvaxAssets = portfolio.assets.filter((asset: any) => asset.symbol !== nativeSym && asset.valueUSD > 5)
           
-          if (nonEthAssets.length > 0) {
-            const assetToSwap = nonEthAssets[0]
+          if (nonAvaxAssets.length > 0) {
+            const assetToSwap = nonAvaxAssets[0]
             const swapResult = await smartSwap({
               tokenInSymbol: assetToSwap.symbol,
               tokenOutSymbol: nativeSym,
@@ -789,7 +776,7 @@ async function buildAgent(chainIdOverride?: number) {
       }
     }
 
-    // Fallback mapping for popular symbols not in Base token registry
+    // Fallback mapping for popular symbols not in Avalanche token registry
     const COINGECKO_FALLBACK: Record<string, string> = {
       BTC: 'bitcoin',
       SOL: 'solana',
@@ -849,7 +836,7 @@ async function buildAgent(chainIdOverride?: number) {
           return { symbol: 'AVAX', price: data['avalanche-2'].usd, change24h: data['avalanche-2'].usd_24h_change }
         }
         // ETH branch removed for current Fuji-only scope; reintroduce when multi-chain support returns.
-        // Known Base token with coingeckoId
+        // Known Avalanche token with coingeckoId
         if (token && token.coingeckoId) {
           const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${token.coingeckoId}&vs_currencies=usd&include_24hr_change=true`)
           if (!res.ok) throw new Error(`Failed to fetch ${sym} price: ${res.status}`)
@@ -857,7 +844,7 @@ async function buildAgent(chainIdOverride?: number) {
           const item = data[token.coingeckoId]
           return { symbol: token.symbol, price: item.usd, change24h: item.usd_24h_change }
         }
-        // Fallback popular non-Base tickers (e.g., BTC)
+        // Fallback popular non-Avalanche tickers (e.g., BTC)
         const cgId = COINGECKO_FALLBACK[sym]
         if (cgId) {
           const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgId}&vs_currencies=usd&include_24hr_change=true`)
@@ -935,12 +922,12 @@ async function buildAgent(chainIdOverride?: number) {
   const nativeBalance = await getBalance(undefined, address)
         
     // Get supported token balances
-  const supportedTokens = chain.id === 8453 ? ['USDC', 'WETH'] : ['USDC', 'WAVAX']
+  const supportedTokens = ['USDC', 'WAVAX']
         const tokenBalances = await Promise.all(
           supportedTokens.map(async (symbol) => {
             try {
       const token = resolveTokenBySymbol(symbol, chain.id)
-      const nativeSentinel = chain.id === 43113 ? 'AVAX' : 'ETH'
+      const nativeSentinel = 'AVAX'
       if (token && token.address !== nativeSentinel) {
                 const balance = await getBalance(token.address as Address, address)
                 const price = await getTokenPrice(symbol)
@@ -958,7 +945,7 @@ async function buildAgent(chainIdOverride?: number) {
           })
         )
 
-    const nativeSym = chain.id === 43113 ? 'AVAX' : 'ETH'
+    const nativeSym = 'AVAX'
     const nativePrice = await getTokenPrice(nativeSym)
     const totalValue = parseFloat(nativeBalance) * nativePrice.price + 
           tokenBalances.filter(Boolean).reduce((sum, token) => sum + (token?.valueUSD || 0), 0)

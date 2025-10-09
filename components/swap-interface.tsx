@@ -11,12 +11,14 @@ import { getAmmAddresses } from '@/lib/amm/config'
 
 import { FUJI_SYMBOL_TO_TOKEN } from '@/lib/tokens'
 
-// Build supported tokens list dynamically from registry
-const SUPPORTED_TOKENS = React.useMemo(() => {
+// Build supported tokens list dynamically from registry - computed at module level, not using hooks
+const getSupportedTokens = () => {
   const base = ['WAVAX', 'USDC', 'WETH.e', 'USDT.e']
   const custom = Object.keys(FUJI_SYMBOL_TO_TOKEN).filter(s => ['TKA','TKB','TKC'].includes(s))
   return [...base, ...custom]
-}, [])
+}
+
+const SUPPORTED_TOKENS = getSupportedTokens()
 
 export const SwapInterface: React.FC = () => {
   const [tokenIn, setTokenIn] = useState('WAVAX')

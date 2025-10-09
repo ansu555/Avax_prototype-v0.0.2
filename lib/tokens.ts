@@ -24,6 +24,8 @@ const MAINNET_TOKENS: Record<string, TokenInfo> = {
 // Fuji testnet tokens (for reference/backward compatibility)
 const FUJI_TOKENS: Record<string, TokenInfo> = {
   AVAX:  { symbol: 'AVAX',  address: 'AVAX', decimals: 18, coingeckoId: 'avalanche-2' },
+  WAVAX: { symbol: 'WAVAX', address: '0xd00ae08403B9bbb9124bB305C09058E32C39A48c', decimals: 18, coingeckoId: 'wrapped-avax' }, // Fuji WAVAX
+  USDC:  { symbol: 'USDC',  address: '0x5425890298aed601595a70AB815c96711a31Bc65', decimals: 6, coingeckoId: 'usd-coin' }, // Fuji test USDC
   WETH:  { symbol: 'WETH.e', address: '0x12162c3E810393dEC01362aBf156D7ecf6159528', decimals: 18, coingeckoId: 'weth' },
   'WETH.E':  { symbol: 'WETH.e', address: '0x12162c3E810393dEC01362aBf156D7ecf6159528', decimals: 18, coingeckoId: 'weth' },
   USDT:  { symbol: 'USDT.e', address: '0xA27f39E9C21b3376e1DA169e90e2DbA0C2e88d7b', decimals: 6, coingeckoId: 'tether' },
@@ -33,13 +35,13 @@ const FUJI_TOKENS: Record<string, TokenInfo> = {
 // Dynamic custom/test tokens from env (for custom deployed tokens)
 function getCustomEnvTokens(): Record<string, TokenInfo> {
   const out: Record<string, TokenInfo> = {}
-  if (process.env.NEXT_PUBLIC_TOKEN_A) {
+  if (process.env.NEXT_PUBLIC_TOKEN_A && process.env.NEXT_PUBLIC_TOKEN_A.match(/^0x[a-fA-F0-9]{40}$/)) {
     out.TOKEN_A = { symbol: 'TOKEN_A', address: process.env.NEXT_PUBLIC_TOKEN_A as Address, decimals: 18 }
   }
-  if (process.env.NEXT_PUBLIC_TOKEN_B) {
+  if (process.env.NEXT_PUBLIC_TOKEN_B && process.env.NEXT_PUBLIC_TOKEN_B.match(/^0x[a-fA-F0-9]{40}$/)) {
     out.TOKEN_B = { symbol: 'TOKEN_B', address: process.env.NEXT_PUBLIC_TOKEN_B as Address, decimals: 18 }
   }
-  if (process.env.NEXT_PUBLIC_TOKEN_C) {
+  if (process.env.NEXT_PUBLIC_TOKEN_C && process.env.NEXT_PUBLIC_TOKEN_C.match(/^0x[a-fA-F0-9]{40}$/)) {
     out.TOKEN_C = { symbol: 'TOKEN_C', address: process.env.NEXT_PUBLIC_TOKEN_C as Address, decimals: 18 }
   }
   return out
