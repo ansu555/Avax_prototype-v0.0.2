@@ -88,7 +88,7 @@ export function MiniCryptoTable({
   const { data, isFetching, error, refetch } = useGetCryptosQuery(100)
 
   const coins: Cryptocurrency[] = useMemo(() => {
-    const list = (data?.coins || []).map((coin: any) => {
+    const list = (data || []).map((coin: any) => {
       const base = {
         id: coin.uuid || coin.id || "",
         rank: parseInt(coin.rank),

@@ -123,6 +123,16 @@ export function TopCryptocurrencies() {
 
   return (
     <section className="mb-8 sm:mb-10">
+      {/* Avalanche Ecosystem Indicator */}
+      <div className="mb-4 p-3 bg-gradient-to-r from-red-500/10 to-transparent border-l-4 border-red-500 rounded-r-lg">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🔴</span>
+          <span className="text-sm font-medium text-red-500 dark:text-red-400">
+            Avalanche Ecosystem Only | Powered by CoinGecko
+          </span>
+        </div>
+      </div>
+
       <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-4 sm:mb-6">
         <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Top Cryptocurrencies</h2>
         <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -144,9 +154,9 @@ export function TopCryptocurrencies() {
       ) : (
         <>
           {view === "table" ? (
-            <CryptoTable cryptos={mapApiDataToCryptos(cryptosList.coins)} />
+            <CryptoTable cryptos={mapApiDataToCryptos(cryptosList)} />
           ) : (
-            <CryptoCards cryptos={mapApiDataToCryptos(cryptosList.coins)} />
+            <CryptoCards cryptos={mapApiDataToCryptos(cryptosList)} />
           )}
         </>
       )}

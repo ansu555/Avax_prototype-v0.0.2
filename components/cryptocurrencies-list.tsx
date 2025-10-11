@@ -159,7 +159,7 @@ export function CryptocurrenciesList() {
   };
   
   // Convert API data to our format
-  const allCryptos = data ? mapApiDataToCryptos(data.coins) : [];
+  const allCryptos = data ? mapApiDataToCryptos(data) : [];
 
   // Filter and sort cryptos
   const filteredCryptos = allCryptos.filter(
@@ -205,6 +205,26 @@ export function CryptocurrenciesList() {
 
   return (
     <div>
+      {/* Avalanche Ecosystem Banner */}
+      <div className="mb-6 p-4 bg-gradient-to-r from-red-500/10 via-red-500/5 to-transparent border border-red-500/20 rounded-lg">
+        <div className="flex items-center gap-3">
+          <div className="flex-shrink-0 w-10 h-10 bg-red-500/20 rounded-full flex items-center justify-center">
+            <span className="text-2xl">🔴</span>
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-red-500 dark:text-red-400">
+              Avalanche Ecosystem Tokens
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Powered by CoinGecko API - Showing tokens from the Avalanche blockchain
+            </p>
+          </div>
+          <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20">
+            {allCryptos.length} tokens
+          </Badge>
+        </div>
+      </div>
+
       <div className="flex flex-col gap-4 mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
