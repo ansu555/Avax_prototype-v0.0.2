@@ -287,6 +287,7 @@ export default function ChatBubble({ variant = "floating", align = "right" }: Ch
                           ? "max-w-full rounded-2xl bg-gradient-to-br from-red-500 to-red-600 px-3 py-2 text-sm text-white shadow-md dark:from-[#F3C623] dark:to-[#D9A800]"
                           : "max-w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow dark:border-white/10 dark:bg-white/5 dark:text-slate-100"
                       }
+                      style={{ whiteSpace: 'pre-wrap' }}
                     >
                       <div className="break-words overflow-auto">{renderContent(m.content)}</div>
                     </div>

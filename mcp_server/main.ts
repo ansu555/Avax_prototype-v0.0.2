@@ -229,6 +229,269 @@ app.post('/suggest-rule', async (req: Request, res: Response) => {
   }
 })
 
+// GET /rule-model - Returns complete rule model documentation
+app.get('/rule-model', (req: Request, res: Response) => {
+  const ruleModel = {
+    overview: {
+      description: "Auto-Pilot rule system for automated crypto trading strategies",
+      platform: "Avax Prototype v0.0.2",
+      features: [
+        "Three strategy types: DCA, REBALANCE, ROTATE",
+        "Three trigger mechanisms: Price Drop, Trend, Momentum",
+        "Risk controls: Max Spend, Max Slippage, Cooldown",
+        "Multi-coin support with dynamic top-N rotation"
+      ]
+    },
+    strategies: {
+      DCA: {
+        name: "Dollar Cost Averaging",
+        description: "Invest fixed amounts on a schedule to reduce timing risk",
+        useCase: "Regular accumulation of assets over time",
+        bestFor: "Long-term investors who want to smooth out price volatility",
+        risk: "low to medium",
+        requires: ["coins array", "trigger", "maxSpendUSD"]
+      },
+      REBALANCE: {
+        name: "Portfolio Rebalancing",
+        description: "Maintain target allocations across selected coins",
+        useCase: "Keep portfolio balanced according to predefined percentages",
+        bestFor: "Diversified portfolio management",
+        risk: "medium",
+        requires: ["coins array (2+)", "trigger", "maxSpendUSD"]
+      },
+      ROTATE: {
+        name: "Rotate Top N",
+        description: "Dynamically shift into the top N trending coins",
+        useCase: "Follow market momentum by rotating into top performers",
+        bestFor: "Active traders seeking momentum plays",
+        risk: "high",
+        requires: ["rotateTopN", "trigger", "maxSpendUSD"]
+      }
+    },
+    triggers: {
+      price_drop_pct: {
+        type: "price_drop_pct",
+        description: "Trigger when price drops by specified percentage",
+        fields: {
+          type: "price_drop_pct",
+          value: "number (percentage, e.g., 5 means 5% drop)"
+        },
+        example: { type: "price_drop_pct", value: 5 },
+        useCase: "Buy the dip strategies",
+        bestFor: "Accumulating during price corrections"
+      },
+      trend_pct: {
+        type: "trend_pct",
+        description: "Trigger based on trend strength over a time window",
+        fields: {
+          type: "trend_pct",
+          value: "number (percentage threshold, e.g., 3)",
+          window: "'24h' | '7d' | '30d' (time window)"
+        },
+        example: { type: "trend_pct", value: 3, window: "7d" },
+        useCase: "Trend-following strategies",
+        bestFor: "Capturing sustained directional moves"
+      },
+      momentum: {
+        type: "momentum",
+        description: "Trigger based on momentum indicator over lookback period",
+        fields: {
+          type: "momentum",
+          value: "number (momentum threshold percentage)",
+          lookbackDays: "number (days to calculate momentum)"
+        },
+        example: { type: "momentum", value: 3, lookbackDays: 7 },
+        useCase: "Momentum-based entries",
+        bestFor: "Riding strong momentum waves"
+      }
+    },
+    ruleStructure: {
+      required: {
+        type: "'dca' | 'rebalance' | 'rotate'",
+        trigger: "RuleTrigger (price_drop_pct | trend_pct | momentum)",
+        maxSpendUSD: "number (maximum USD to spend per execution)",
+        maxSlippage: "number (0-100, maximum slippage percentage)",
+        cooldownMinutes: "number (minimum minutes between executions)"
+      },
+      conditional: {
+        targets: "string[] (required for DCA and REBALANCE, coin IDs)",
+        rotateTopN: "number (required for ROTATE, top N coins to rotate into)"
+      },
+      optional: {
+        ownerAddress: "string (wallet address, defaults to 0x000...)",
+        status: "'active' | 'paused' (defaults to 'active')"
+      },
+      generated: {
+        id: "string (auto-generated with 'rule_' prefix)",
+        createdAt: "string (ISO timestamp)"
+      }
+    },
+    riskControls: {
+      maxSpendUSD: {
+        description: "Maximum USD amount to spend per rule execution",
+        purpose: "Prevents excessive capital deployment in a single trade",
+        example: 100,
+        recommendation: "Set based on portfolio size, typically 1-5% of portfolio"
+      },
+      maxSlippage: {
+        description: "Maximum allowed slippage percentage (0-100)",
+        purpose: "Protects against poor execution prices in illiquid markets",
+        example: 0.5,
+        recommendation: "0.3-1% for liquid pairs, 2-5% for less liquid pairs"
+      },
+      cooldownMinutes: {
+        description: "Minimum minutes between rule executions",
+        purpose: "Prevents over-trading and allows market to settle",
+        example: 60,
+        recommendation: "60-1440 minutes depending on strategy (1 hour to 1 day)"
+      }
+    },
+    coinSelection: {
+      forDCA: {
+        description: "Select specific coins to accumulate",
+        format: "Array of coin IDs (e.g., ['bitcoin', 'ethereum'])",
+        minCoins: 1,
+        maxCoins: "unlimited",
+        examples: [
+          ["bitcoin"],
+          ["ethereum", "solana", "avalanche-2"]
+        ]
+      },
+      forREBALANCE: {
+        description: "Select coins to maintain balanced allocation",
+        format: "Array of coin IDs (e.g., ['bitcoin', 'ethereum'])",
+        minCoins: 2,
+        maxCoins: "unlimited",
+        examples: [
+          ["bitcoin", "ethereum"],
+          ["bitcoin", "ethereum", "solana", "cardano"]
+        ]
+      },
+      forROTATE: {
+        description: "Specify how many top coins to rotate into",
+        format: "rotateTopN: number",
+        minValue: 1,
+        maxValue: "unlimited (typically 3-10)",
+        examples: [3, 5, 10],
+        note: "System automatically selects top N trending coins"
+      }
+    },
+    workflowExamples: {
+      dcaBuyTheDip: {
+        description: "DCA into BTC when it drops 5%",
+        rule: {
+          type: "dca",
+          targets: ["bitcoin"],
+          trigger: { type: "price_drop_pct", value: 5 },
+          maxSpendUSD: 100,
+          maxSlippage: 0.5,
+          cooldownMinutes: 60
+        }
+      },
+      rebalanceTrendFollowing: {
+        description: "Rebalance portfolio when 7-day trend exceeds 3%",
+        rule: {
+          type: "rebalance",
+          targets: ["bitcoin", "ethereum", "solana"],
+          trigger: { type: "trend_pct", value: 3, window: "7d" },
+          maxSpendUSD: 500,
+          maxSlippage: 1,
+          cooldownMinutes: 1440
+        }
+      },
+      rotateMomentum: {
+        description: "Rotate into top 3 coins with strong 7-day momentum",
+        rule: {
+          type: "rotate",
+          rotateTopN: 3,
+          trigger: { type: "momentum", value: 5, lookbackDays: 7 },
+          maxSpendUSD: 300,
+          maxSlippage: 2,
+          cooldownMinutes: 360
+        }
+      }
+    },
+    frontendMapping: {
+      ruleBuilder: {
+        component: "RuleBuilderModal",
+        location: "components/rule-builder-modal.tsx",
+        fields: [
+          "strategy: 'DCA' | 'REBALANCE' | 'ROTATE'",
+          "coins: string[] (coin IDs)",
+          "triggerType: 'priceDrop' | 'trend' | 'momentum'",
+          "dropPercent?: number",
+          "trendWindow?: '24h' | '7d' | '30d'",
+          "trendThreshold?: number",
+          "momentumLookback?: number",
+          "momentumThreshold?: number",
+          "rotateTopN?: number",
+          "maxSpendUsd: number",
+          "maxSlippagePercent: number",
+          "cooldownMinutes: number"
+        ],
+        conversion: {
+          strategy: "Uppercase (DCA/REBALANCE/ROTATE) → lowercase (dca/rebalance/rotate)",
+          triggerType: "priceDrop → price_drop_pct, trend → trend_pct, momentum → momentum",
+          maxSpendUsd: "→ maxSpendUSD",
+          maxSlippagePercent: "→ maxSlippage"
+        }
+      },
+      apiEndpoint: {
+        create: "POST /api/rules",
+        get: "GET /api/rules?owner={address}",
+        update: "PATCH /api/rules",
+        delete: "DELETE /api/rules",
+        execute: "POST /api/agent/execute"
+      }
+    },
+    bestPractices: {
+      suggestions: [
+        "Start with small maxSpendUSD amounts for testing",
+        "Use longer cooldowns (6-24 hours) to avoid over-trading",
+        "DCA works best with price_drop_pct triggers for buy-the-dip",
+        "REBALANCE is effective with trend_pct triggers on longer windows (7d, 30d)",
+        "ROTATE strategies benefit from momentum triggers to catch strong moves",
+        "Set maxSlippage appropriately: 0.3-1% for major pairs, 2-5% for altcoins",
+        "Always test rules with simulation before activating",
+        "Monitor cooldown periods to ensure rules don't fire too frequently"
+      ],
+      riskManagement: [
+        "Never allocate more than 5% of portfolio to a single rule execution",
+        "Use multiple rules with different triggers for diversification",
+        "Set appropriate cooldowns to prevent emotional trading",
+        "Monitor slippage closely in volatile markets",
+        "Pause rules during extreme market conditions",
+        "Review and adjust triggers based on market regime changes"
+      ]
+    },
+    mcpIntegration: {
+      suggestRule: {
+        endpoint: "POST /suggest-rule",
+        description: "AI analyzes market conditions and suggests optimal rule configuration",
+        input: { coin: "string" },
+        output: {
+          suggestions: "Array of rule recommendations with rationale",
+          analysis: "Market condition analysis supporting suggestions"
+        }
+      },
+      analyze: {
+        endpoint: "POST /analyze",
+        description: "Comprehensive market analysis to inform rule creation",
+        input: "{ coin: string, horizonDays?: number, chartType?: string }",
+        output: {
+          summary: "Market overview",
+          insights: "Technical indicators and patterns",
+          predictions: "Price forecasts",
+          strategies: "Recommended strategies (DCA/REBALANCE/ROTATE)",
+          overallAnalysis: "Comprehensive summary"
+        }
+      }
+    }
+  }
+  
+  res.json(ruleModel)
+})
+
 // Data fetching (using CoinGecko API only - NO SYNTHETIC DATA)
 async function fetchHistoricalData(
   coin: string, 
