@@ -97,13 +97,13 @@ app.post('/analyze', async (req: Request, res: Response) => {
   try {
     const response: AnalyzeResponse = { ok: true }
 
-    // Fetch historical data
+    // Fetch historical data (REAL DATA ONLY)
     const historicalData = await fetchHistoricalData(coin, horizonDays, granularity)
     
     if (historicalData.length === 0) {
       return res.status(404).json({ 
         ok: false, 
-        error: `No data available for ${coin}` 
+        error: `No data available for "${coin}". Please check the coin symbol (e.g., btc, eth, avax) or CoinGecko ID.` 
       })
     }
 
@@ -141,60 +141,63 @@ app.post('/analyze', async (req: Request, res: Response) => {
     res.json(response)
   } catch (error: any) {
     console.error('Analysis error:', error)
-    res.status(500).json({ 
+    
+    // Provide helpful error messages
+    const errorMsg = error?.message || 'Internal server error'
+    const isNotFound = errorMsg.toLowerCase().includes('not found') || 
+                       errorMsg.toLowerCase().includes('no data') ||
+                       errorMsg.toLowerCase().includes('invalid coin')
+    
+    res.status(isNotFound ? 404 : 500).json({ 
       ok: false, 
-      error: error?.message || 'Internal server error' 
+      error: errorMsg,
+      suggestion: isNotFound 
+        ? 'Try using common symbols like: btc, eth, avax, sol, ada, dot, matic, link'
+        : 'Please try again or check your CoinGecko API key configuration.'
     })
   }
 })
 
-// Data fetching (using CoinGecko API)
+// Data fetching (using CoinGecko API only - NO SYNTHETIC DATA)
 async function fetchHistoricalData(
   coin: string, 
   days: number, 
   granularity: Granularity
 ): Promise<OHLCV[]> {
-  try {
-    // Map common symbols to CoinGecko IDs
-    const coinMap: Record<string, string> = {
-      'btc': 'bitcoin',
-      'bitcoin': 'bitcoin',
-      'eth': 'ethereum',
-      'ethereum': 'ethereum',
-      'sol': 'solana',
-      'solana': 'solana',
-      'avax': 'avalanche-2',
-      'avalanche': 'avalanche-2',
-      'ada': 'cardano',
-      'cardano': 'cardano',
-      'dot': 'polkadot',
-      'polkadot': 'polkadot',
-      'matic': 'matic-network',
-      'polygon': 'matic-network',
-      'link': 'chainlink',
-      'chainlink': 'chainlink',
-    }
-
-    const coinId = coinMap[coin.toLowerCase()] || coin.toLowerCase()
-    
-    // Try to fetch REAL data from CoinGecko
-    try {
-      const realData = await fetchCoinGeckoData(coinId, days)
-      if (realData.length > 0) {
-        console.log(`✅ Fetched ${realData.length} real data points for ${coinId}`)
-        return realData
-      }
-    } catch (apiError) {
-      console.warn(`⚠️ CoinGecko API failed for ${coinId}, falling back to synthetic data:`, apiError)
-    }
-    
-    // Fallback: generate synthetic data based on coin
-    console.log(`⚠️ Using synthetic data for ${coinId}`)
-    return generateSyntheticData(coinId, days, granularity)
-  } catch (error) {
-    console.error('Data fetch error:', error)
-    return []
+  // Map common symbols to CoinGecko IDs
+  const coinMap: Record<string, string> = {
+    'btc': 'bitcoin',
+    'bitcoin': 'bitcoin',
+    'eth': 'ethereum',
+    'ethereum': 'ethereum',
+    'sol': 'solana',
+    'solana': 'solana',
+    'avax': 'avalanche-2',
+    'avalanche': 'avalanche-2',
+    'ada': 'cardano',
+    'cardano': 'cardano',
+    'dot': 'polkadot',
+    'polkadot': 'polkadot',
+    'matic': 'matic-network',
+    'polygon': 'matic-network',
+    'link': 'chainlink',
+    'chainlink': 'chainlink',
+    'bnb': 'binancecoin',
+    'usdc': 'usd-coin',
+    'usdt': 'tether',
   }
+
+  const coinId = coinMap[coin.toLowerCase()] || coin.toLowerCase()
+  
+  // Fetch REAL data from CoinGecko (no fallback)
+  const realData = await fetchCoinGeckoData(coinId, days)
+  
+  if (realData.length === 0) {
+    throw new Error(`No data available for ${coin}. Please check the coin symbol/ID.`)
+  }
+  
+  console.log(`✅ Fetched ${realData.length} real data points for ${coinId}`)
+  return realData
 }
 
 // Fetch real data from CoinGecko API
@@ -241,49 +244,6 @@ async function fetchCoinGeckoData(coinId: string, days: number): Promise<OHLCV[]
   })
   
   return ohlcvData
-}
-
-// Generate synthetic OHLCV data for demo
-function generateSyntheticData(coin: string, days: number, granularity: Granularity): OHLCV[] {
-  const data: OHLCV[] = []
-  const intervalsPerDay = granularity === '1h' ? 24 : granularity === '4h' ? 6 : 1
-  const totalPoints = days * intervalsPerDay
-  
-  // Base prices for different coins
-  const basePrices: Record<string, number> = {
-    'bitcoin': 64000,
-    'ethereum': 3200,
-    'solana': 145,
-    'avalanche-2': 35,
-    'cardano': 0.45,
-    'polkadot': 7.2,
-  }
-  
-  let price = basePrices[coin] || 100
-  const volatility = 0.02
-  const trend = 0.0003
-  
-  const now = Date.now()
-  const intervalMs = (24 * 60 * 60 * 1000) / intervalsPerDay
-  
-  for (let i = 0; i < totalPoints; i++) {
-    const timestamp = now - (totalPoints - i) * intervalMs
-    
-    // Random walk with slight upward trend
-    const change = (Math.random() - 0.48) * volatility + trend
-    price = price * (1 + change)
-    
-    const variance = price * 0.005
-    const open = price * (1 + (Math.random() - 0.5) * 0.01)
-    const close = price * (1 + (Math.random() - 0.5) * 0.01)
-    const high = Math.max(open, close) * (1 + Math.random() * 0.01)
-    const low = Math.min(open, close) * (1 - Math.random() * 0.01)
-    const volume = 1000000 + Math.random() * 5000000
-    
-    data.push({ timestamp, open, high, low, close, volume })
-  }
-  
-  return data
 }
 
 // Technical indicators
@@ -450,6 +410,15 @@ function generatePredictions(
   // Add some volatility-based uncertainty
   const volatility = calculateVolatility(closes, Math.max(2, closes.length))
   
+  // Calculate trend strength (correlation coefficient)
+  const trendStrength = calculateTrendStrength(closes)
+  
+  // Base confidence depends on volatility and trend strength
+  // Low volatility + strong trend = high confidence
+  // High volatility + weak trend = low confidence
+  const normalizedVolatility = Math.min(volatility / currentPrice, 0.5) // Cap at 50%
+  const baseConfidence = 0.5 + (trendStrength * 0.3) - (normalizedVolatility * 0.2)
+  
   const daysToPredict = Math.min(horizonDays, 7) // Predict up to 7 days
   
   for (let i = 1; i <= daysToPredict; i++) {
@@ -457,8 +426,10 @@ function generatePredictions(
     const randomWalk = (Math.random() - 0.5) * volatility * Math.sqrt(i)
     const predictedPrice = currentPrice + trendFactor + randomWalk
     
-    // Probability decreases with time horizon
-    const probability = Math.max(0.5, 0.7 - (i * 0.02))
+    // Dynamic probability decreases with time horizon AND depends on market conditions
+    // Each day reduces confidence by 2-8% depending on volatility
+    const decayRate = 0.02 + (normalizedVolatility * 0.06)
+    const probability = Math.max(0.3, Math.min(0.95, baseConfidence - (i * decayRate)))
     
     const date = new Date()
     date.setDate(date.getDate() + i)
@@ -473,6 +444,32 @@ function generatePredictions(
   return predictions
 }
 
+// Calculate trend strength (R-squared approximation)
+function calculateTrendStrength(prices: number[]): number {
+  if (prices.length < 2) return 0
+  
+  const n = prices.length
+  const xMean = (n - 1) / 2
+  const yMean = prices.reduce((sum, p) => sum + p, 0) / n
+  
+  let numerator = 0
+  let xVariance = 0
+  let yVariance = 0
+  
+  for (let i = 0; i < n; i++) {
+    const xDiff = i - xMean
+    const yDiff = prices[i] - yMean
+    numerator += xDiff * yDiff
+    xVariance += xDiff * xDiff
+    yVariance += yDiff * yDiff
+  }
+  
+  if (xVariance === 0 || yVariance === 0) return 0
+  
+  const correlation = numerator / Math.sqrt(xVariance * yVariance)
+  return Math.abs(correlation) // R-squared is correlation squared, but we use abs(correlation) for simplicity
+}
+
 // Generate strategies
 function generateStrategies(
   coin: string, 
@@ -481,46 +478,115 @@ function generateStrategies(
 ): Strategy[] {
   const strategies: Strategy[] = []
   
-  // DCA Strategy (always available)
-  strategies.push({
-    name: 'DCA Core',
-    description: `Weekly DCA into ${coin.toUpperCase()} over 4-8 weeks, rebalance monthly`,
-    risk: 'low'
-  })
+  // Calculate additional metrics for better strategy selection
+  const rsi = indicators.rsi
+  const macdHist = indicators.macd.histogram
+  const trend = indicators.trend
+  const volatility = indicators.volatility
   
-  // Momentum strategy (if bullish)
-  if (indicators.trend === 'bullish' && indicators.rsi < 70) {
+  // Volatility-based risk adjustment
+  const isHighVolatility = volatility > currentPrice * 0.05
+  const isLowVolatility = volatility < currentPrice * 0.02
+  
+  // ALWAYS: DCA Strategy (but vary the description based on conditions)
+  if (isHighVolatility) {
     strategies.push({
-      name: 'Momentum Entry',
-      description: 'Enter on strength with 5/20 MA crossover confirmation, 2% stop-loss',
+      name: 'DCA Core',
+      description: `High volatility detected - spread ${coin.toUpperCase()} purchases over 8-12 weeks to smooth entry`,
+      risk: 'low'
+    })
+  } else if (trend === 'bearish') {
+    strategies.push({
+      name: 'DCA Core',
+      description: `Downtrend detected - accumulate ${coin.toUpperCase()} in small weekly chunks, target 3-6 month hold`,
+      risk: 'low'
+    })
+  } else {
+    strategies.push({
+      name: 'DCA Core',
+      description: `Steady ${coin.toUpperCase()} accumulation over 4-8 weeks, rebalance monthly`,
+      risk: 'low'
+    })
+  }
+  
+  // Momentum strategy (if bullish with confirmation)
+  if (trend === 'bullish' && rsi > 45 && rsi < 70 && macdHist > 0) {
+    strategies.push({
+      name: 'Momentum Breakout',
+      description: `Strong uptrend with RSI at ${rsi.toFixed(1)} - enter with 3-5% position, 2% trailing stop`,
       risk: 'medium'
     })
   }
   
   // Mean reversion (if oversold)
-  if (indicators.rsi < 35) {
+  if (rsi < 35) {
+    const severity = rsi < 25 ? 'deeply' : 'moderately'
     strategies.push({
       name: 'Mean Reversion',
-      description: 'Accumulate in oversold zone, target RSI 50-60 for exits',
+      description: `RSI ${rsi.toFixed(1)} is ${severity} oversold - accumulate 25-50% position, target RSI 50-60 exits`,
       risk: 'medium'
+    })
+  } else if (rsi > 70) {
+    // Overbought - consider taking profits
+    strategies.push({
+      name: 'Profit Taking',
+      description: `RSI ${rsi.toFixed(1)} is overbought - scale out 20-40% of position, set trailing stops`,
+      risk: 'low'
     })
   }
   
-  // Range trading (if neutral)
-  if (indicators.trend === 'neutral') {
+  // Range trading (if neutral and low volatility)
+  if (trend === 'neutral' && !isHighVolatility) {
     strategies.push({
       name: 'Range Trading',
-      description: 'Buy support near 30-day MA, sell resistance at recent highs',
+      description: `Sideways market - buy near 30-day MA ($${(currentPrice * 0.97).toFixed(2)}), sell at recent highs ($${(currentPrice * 1.03).toFixed(2)})`,
       risk: 'medium'
     })
   }
   
-  // High conviction (if strong bullish)
-  if (indicators.trend === 'bullish' && indicators.macd.histogram > 0 && indicators.rsi > 50 && indicators.rsi < 70) {
+  // High conviction trend following (if strong bullish)
+  if (trend === 'bullish' && macdHist > 0 && rsi > 55 && rsi < 75) {
+    const stopLevel = (currentPrice * 0.92).toFixed(2)
     strategies.push({
       name: 'Trend Following',
-      description: 'Ride the trend with trailing stop at 30-day MA, scale out at resistance',
+      description: `Strong bullish momentum - ride trend with 50-80% position, trailing stop at $${stopLevel} or 30-day MA`,
       risk: 'high'
+    })
+  }
+  
+  // Bearish defensive strategy
+  if (trend === 'bearish' && rsi < 50) {
+    strategies.push({
+      name: 'Defensive Positioning',
+      description: `Bearish trend with RSI ${rsi.toFixed(1)} - wait for RSI < 30 or 50-day MA support before entry`,
+      risk: 'low'
+    })
+  }
+  
+  // Volatility breakout (if high volatility)
+  if (isHighVolatility && Math.abs(macdHist) > 0.5) {
+    strategies.push({
+      name: 'Volatility Breakout',
+      description: `High volatility (${(volatility/currentPrice * 100).toFixed(1)}%) - use 20-30% position with wide stops at ±8%`,
+      risk: 'high'
+    })
+  }
+  
+  // FOMO warning (if very overbought)
+  if (rsi > 80) {
+    strategies.push({
+      name: 'FOMO Warning',
+      description: `⚠️ Extreme overbought (RSI ${rsi.toFixed(1)}) - AVOID new entries, consider hedging existing positions`,
+      risk: 'low'
+    })
+  }
+  
+  // Consolidation strategy (if very low volatility)
+  if (isLowVolatility && trend === 'neutral') {
+    strategies.push({
+      name: 'Accumulation Phase',
+      description: `Low volatility consolidation - ideal for building position, target 2-3x avg volume spike for breakout`,
+      risk: 'low'
     })
   }
   

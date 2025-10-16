@@ -8,6 +8,7 @@ import { getAgent } from "@/lib/agent"
 import { analyzeCoin, mcpHealth } from "@/lib/mcp/analytics-client"
 import { resolveTokenBySymbol } from "@/lib/tokens"
 import { parseEther } from "viem"
+import { fetchHistoricalData, formatHistoricalDataForAI } from "@/lib/coingecko-history"
 
 export const runtime = "nodejs"
 
@@ -111,6 +112,9 @@ export async function POST(req: Request) {
         const horizonDays = horizonMatch ? Math.min(365, Math.max(1, parseInt(horizonMatch[1], 10))) : 30
         const granularity: '1h' | '4h' | '1d' = /\b1h\b/i.test(lastUserMsg) ? '1h' : /\b4h\b/i.test(lastUserMsg) ? '4h' : '1d'
 
+        // Fetch historical data for context (1 year by default)
+        const historicalContext = await fetchHistoricalData(coin, 365, false).catch(() => null)
+
         const resp = await analyzeCoin({ coin, horizonDays, granularity, tasks: ['analysis', 'prediction', 'strategy', 'charts'] })
         if (!resp.ok) {
           return NextResponse.json({ ok: true, content: `❌ MCP error: ${resp.error || 'Unknown error'}${health.ok ? '' : `\nHealth: ${health.message || 'unreachable'}`}` , threadId: config.configurable.thread_id })
@@ -118,6 +122,13 @@ export async function POST(req: Request) {
 
         // Format a concise response for chat
         const parts: string[] = []
+        
+        // Add historical context if available
+        if (historicalContext?.ok && historicalContext.statistics) {
+          const stats = historicalContext.statistics
+          parts.push(`📊 **${coin.toUpperCase()} - 1 Year Overview**\n💰 Current: $${stats.currentPrice.toFixed(6)} | 📈 High: $${stats.highestPrice.toFixed(6)} | 📉 Low: $${stats.lowestPrice.toFixed(6)}\n📊 Change: ${stats.priceChangePercent >= 0 ? '+' : ''}${stats.priceChangePercent.toFixed(2)}% | Volatility: ${stats.volatility.toFixed(2)}%`)
+        }
+        
         if (resp.summary) parts.push(`📊 ${resp.summary}`)
         if (resp.insights?.length) parts.push(`Insights:\n- ${resp.insights.slice(0, 5).join('\n- ')}`)
         if (resp.predictions?.length) {
@@ -140,6 +151,78 @@ export async function POST(req: Request) {
       }
     }
 
+    // === HISTORICAL DATA DETECTION ===
+    // Detect requests for historical price data: "bitcoin history", "1 year data for eth", "price history of avax"
+    const historyIntent = /(history|historical|past\s+(?:price|data)|(?:price|data)\s+history|year\s+(?:old|data)|month\s+(?:old|data)|since)/i.test(lastUserMsg)
+    const historyMatch = 
+      lastUserMsg.match(/(?:history|historical|past|data)\s+(?:of|for|on)?\s*([a-z0-9\-]{2,40})/i) ||  // "history of bitcoin"
+      lastUserMsg.match(/([a-z0-9\-]{2,40})\s+(?:history|historical|past\s+data|price\s+history)/i) ||  // "bitcoin history"
+      lastUserMsg.match(/(\d+)\s+(?:year|month|day)s?\s+(?:of|for)?\s*([a-z0-9\-]{2,40})/i)            // "1 year bitcoin"
+    
+    if (historyIntent && historyMatch) {
+      try {
+        // Extract coin name and time period
+        let coin = historyMatch[2] || historyMatch[1] || ''
+        coin = coin.toLowerCase().trim()
+        
+        // Skip if blacklisted word
+        if (!blacklistedWords.includes(coin)) {
+          // Extract days parameter
+          let days: number | 'max' = 365 // default 1 year
+          
+          // Check for specific time periods
+          const yearMatch = lastUserMsg.match(/(\d+)\s*years?/i)
+          const monthMatch = lastUserMsg.match(/(\d+)\s*months?/i)
+          const dayMatch = lastUserMsg.match(/(\d+)\s*days?/i)
+          const maxMatch = /\b(all|max|maximum|complete|full|entire)\b/i.test(lastUserMsg)
+          
+          if (maxMatch) {
+            days = 'max'
+          } else if (yearMatch) {
+            days = Math.min(365, parseInt(yearMatch[1]) * 365)
+          } else if (monthMatch) {
+            days = Math.min(365, parseInt(monthMatch[1]) * 30)
+          } else if (dayMatch) {
+            days = Math.min(365, parseInt(dayMatch[1]))
+          }
+          
+          // Fetch historical data
+          const histData = await fetchHistoricalData(coin, days, true)
+          
+          if (histData.ok && histData.statistics) {
+            // Format comprehensive response
+            const response = formatHistoricalDataForAI(histData)
+            
+            // Add trend analysis
+            const trend = histData.statistics.priceChangePercent > 0 ? '📈 Upward trend' : '📉 Downward trend'
+            const volatilityLevel = histData.statistics.volatility > 10 ? 'High' : histData.statistics.volatility > 5 ? 'Medium' : 'Low'
+            
+            const enhancedResponse = `${response}\n\n**Analysis:**\n${trend}\nVolatility Level: ${volatilityLevel}\nData Period: ${days === 'max' ? 'Maximum available' : `${days} days`}\n\n💡 *This data can be used for technical analysis, trend prediction, and investment decisions.*`
+            
+            return NextResponse.json({
+              ok: true,
+              content: enhancedResponse,
+              threadId: config.configurable.thread_id,
+              metadata: {
+                type: 'historical_data',
+                coin,
+                days,
+                dataPoints: histData.dataPoints
+              }
+            })
+          } else {
+            return NextResponse.json({
+              ok: true,
+              content: `❌ Could not fetch historical data for ${coin}. ${histData.error || 'Please check the coin name and try again.'}`,
+              threadId: config.configurable.thread_id
+            })
+          }
+        }
+      } catch (e: any) {
+        // Continue to other handlers if historical data fails
+        console.error('Historical data error:', e)
+      }
+    }
     
     // Top coins with dynamic count - "top 5 coins", "show me 15 cryptocurrencies", etc.
     let topCoinsMatch = text.match(/top\s+(\d+)\s+(?:coin|crypto|cryptocurrency|token)/i)

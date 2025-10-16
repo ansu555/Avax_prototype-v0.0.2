@@ -163,6 +163,38 @@ This is the main endpoint for all user interactions with the AI agent.
 
 The core of this project is the integration of gasless transactions via **0xGasless Agentkit** and natural language processing with an AI agent across multiple blockchain networks.
 
+### 📊 Historical Price Data & Analysis (NEW!)
+
+The AI agent now has access to comprehensive historical price data from CoinGecko, enabling advanced market analysis and predictions:
+
+**Features:**
+- ✅ **1 year of historical data** for any cryptocurrency
+- ✅ **Complete price history** using `days=max` (can be years!)
+- ✅ **Automatic trend analysis** (volatility, price changes, highs/lows)
+- ✅ **OHLCV candlestick data** for technical analysis
+- ✅ **Natural language queries** - just ask in chat!
+
+**Example Queries:**
+```
+"Show me Bitcoin price history"
+"Get 1 year data for Ethereum"
+"AVAX historical prices"
+"Analyze Bitcoin with 12 months context"
+```
+
+**API Access:**
+```bash
+# Get 1 year of Bitcoin data
+curl "http://localhost:3000/api/history?coin=bitcoin&days=365"
+
+# Get all available data
+curl "http://localhost:3000/api/history?coin=ethereum&days=max"
+```
+
+📖 **[Complete Historical Data Guide →](./HISTORICAL_DATA_GUIDE.md)**  
+🚀 **[Quick Start Guide →](./HISTORICAL_DATA_QUICKSTART.md)**  
+💡 **[Code Examples →](./lib/examples/historical-data-examples.ts)**
+
 ### 0xGasless Smart Account
 
 We use an ERC-4337 Smart Account to execute transactions on behalf of the user without requiring them to pay for gas directly. The system supports multiple chains with per-chain configuration.
