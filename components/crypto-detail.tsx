@@ -168,6 +168,11 @@ export function CryptoDetail({ id }: { id: string }) {
     );
   }
 
+  // Guard against undefined data after loading/error states
+  if (!crypto) {
+    return <LoadingSkeleton />;
+  }
+
   return (
     <div>
       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
@@ -550,7 +555,7 @@ export function CryptoDetail({ id }: { id: string }) {
                   )}
                   
                   {/* Add other links from API if available */}
-                  {crypto.links?.map((link: { url: string; type?: string; name?: string }, index: number) => (
+                  {(crypto as any).links?.map((link: { url: string; type?: string; name?: string }, index: number) => (
                     <Link
                       key={index}
                       href={link.url}
@@ -566,11 +571,11 @@ export function CryptoDetail({ id }: { id: string }) {
               </div>
 
               {/* Social media links if available */}
-              {crypto.socials && crypto.socials.length > 0 && (
+              {(crypto as any).socials && (crypto as any).socials.length > 0 && (
                 <div>
                   <h3 className="text-lg font-medium mb-2">Social Media</h3>
                   <div className="grid gap-2">
-                    {crypto.socials.map((social: { url: string; type: string }, index: number) => (
+                    {(crypto as any).socials.map((social: { url: string; type: string }, index: number) => (
                       <Link
                         key={index}
                         href={social.url}
