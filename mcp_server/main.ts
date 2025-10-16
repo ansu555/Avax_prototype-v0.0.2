@@ -15,6 +15,7 @@ interface AnalyzeRequest {
   horizonDays?: number
   granularity?: Granularity
   tasks?: Task[]
+  chartType?: 'line' | 'bar' | 'candlestick' | 'area' // New: user can specify chart type
 }
 
 interface OHLCV {
@@ -50,6 +51,13 @@ interface AnalyzeResponse {
   predictions?: Prediction[]
   strategies?: Strategy[]
   charts?: Chart[]
+  methodology?: {
+    dataPoints: number
+    timeframe: string
+    method: string
+    indicators: string[]
+    confidence: string
+  }
   error?: string
 }
 
@@ -88,7 +96,7 @@ app.post('/analyze', async (req: Request, res: Response) => {
     return res.status(401).json({ ok: false, error: 'Unauthorized' })
   }
 
-  const { coin, horizonDays = 30, granularity = '1d', tasks = [] }: AnalyzeRequest = req.body || {}
+  const { coin, horizonDays = 30, granularity = '1d', tasks = [], chartType = 'line' }: AnalyzeRequest = req.body || {}
 
   if (!coin) {
     return res.status(400).json({ ok: false, error: 'coin parameter is required' })
@@ -119,6 +127,15 @@ app.post('/analyze', async (req: Request, res: Response) => {
     // Prediction task
     if (tasks.length === 0 || tasks.includes('prediction')) {
       response.predictions = generatePredictions(historicalData, horizonDays, currentPrice)
+      
+      // Add methodology explanation
+      response.methodology = {
+        dataPoints: historicalData.length,
+        timeframe: `${horizonDays} days (${Math.floor(historicalData.length / 24)} data points per day)`,
+        method: 'Linear Regression + Volatility Analysis',
+        indicators: ['RSI (14-period)', 'MACD', '30/50-day Moving Averages', 'Historical Volatility'],
+        confidence: `Based on ${historicalData.length} real price points from CoinGecko API. Confidence decreases with time horizon due to market uncertainty.`
+      }
     }
 
     // Strategy task
@@ -134,7 +151,8 @@ app.post('/analyze', async (req: Request, res: Response) => {
         coin, 
         historicalData, 
         indicators, 
-        response.predictions || []
+        response.predictions || [],
+        chartType // Pass chart type preference
       )
     }
 
@@ -598,7 +616,8 @@ async function generateCharts(
   coin: string,
   data: OHLCV[],
   indicators: Indicators,
-  predictions: Prediction[]
+  predictions: Prediction[],
+  chartType: 'line' | 'bar' | 'candlestick' | 'area' = 'line'
 ): Promise<Chart[]> {
   const charts: Chart[] = []
   
@@ -606,19 +625,30 @@ async function generateCharts(
     // Price + MA chart
     const priceChartId = crypto.randomBytes(8).toString('hex')
     const priceChartPath = path.join(CHARTS_DIR, `${priceChartId}.svg`)
-    await renderPriceChart(data, indicators, priceChartPath)
+    
+    // Render based on user preference
+    if (chartType === 'bar') {
+      await renderBarChart(data, indicators, priceChartPath)
+    } else if (chartType === 'candlestick') {
+      await renderCandlestickChart(data, indicators, priceChartPath)
+    } else if (chartType === 'area') {
+      await renderAreaChart(data, indicators, priceChartPath)
+    } else {
+      await renderPriceChart(data, indicators, priceChartPath) // Default line chart
+    }
+    
     charts.push({
-      title: 'Price History with Moving Averages',
+      title: `Price History (${chartType} chart) with Moving Averages`,
       url: `${BASE_URL}/charts/${priceChartId}.svg`
     })
     
-    // Forecast chart
+    // Forecast chart (always linear for predictions)
     if (predictions.length > 0) {
       const forecastChartId = crypto.randomBytes(8).toString('hex')
       const forecastChartPath = path.join(CHARTS_DIR, `${forecastChartId}.svg`)
       await renderForecastChart(data, predictions, forecastChartPath)
       charts.push({
-        title: 'Price Forecast with Confidence Bands',
+        title: 'Price Forecast (Linear) with Confidence Bands',
         url: `${BASE_URL}/charts/${forecastChartId}.svg`
       })
     }
@@ -752,6 +782,147 @@ async function renderForecastChart(
     <text x=\"${width / 2}\" y=\"25\" fill=\"#fff\" font-size=\"14\" text-anchor=\"middle\">Price Forecast</text>
     ${yLabels}
     ${legend}
+  </svg>`
+
+  await fs.writeFile(outputPath, svg, 'utf-8')
+}
+
+// Render bar chart as SVG
+async function renderBarChart(
+  data: OHLCV[], 
+  indicators: Indicators, 
+  outputPath: string
+): Promise<void> {
+  const width = 800
+  const height = 400
+  const margin = { top: 40, right: 20, bottom: 40, left: 60 }
+  const chartWidth = width - margin.left - margin.right
+  const chartHeight = height - margin.top - margin.bottom
+
+  const recentData = data.slice(-90)
+  const prices = recentData.map(d => d.close)
+  const minPrice = Math.min(...prices) * 0.98
+  const maxPrice = Math.max(...prices) * 1.02
+
+  const barWidth = chartWidth / recentData.length
+  const yScale = (p: number) => margin.top + chartHeight - ((p - minPrice) / (maxPrice - minPrice)) * chartHeight
+
+  const bars = recentData.map((d, i) => {
+    const x = margin.left + i * barWidth
+    const barHeight = chartHeight - (yScale(d.close) - margin.top)
+    const color = i > 0 && d.close > recentData[i-1].close ? '#00ff88' : '#ff4444'
+    return `<rect x="${x.toFixed(2)}" y="${yScale(d.close).toFixed(2)}" width="${(barWidth * 0.8).toFixed(2)}" height="${barHeight.toFixed(2)}" fill="${color}" opacity="0.8" />`
+  }).join('\n')
+
+  const yLabels = Array.from({ length: 6 }, (_, i) => {
+    const price = minPrice + (maxPrice - minPrice) * (i / 5)
+    const y = margin.top + chartHeight - (chartHeight / 5) * i
+    return `<text x="${margin.left - 10}" y="${(y + 4).toFixed(2)}" fill="#fff" font-size="12" text-anchor="end">$${price.toFixed(2)}</text>`
+  }).join('\n')
+
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+  <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+    <rect x="0" y="0" width="${width}" height="${height}" fill="#1a1a1a" />
+    ${bars}
+    <text x="${width / 2}" y="25" fill="#fff" font-size="14" text-anchor="middle">Price History (Bar Chart - Last 90 Days)</text>
+    ${yLabels}
+  </svg>`
+
+  await fs.writeFile(outputPath, svg, 'utf-8')
+}
+
+// Render candlestick chart as SVG
+async function renderCandlestickChart(
+  data: OHLCV[], 
+  indicators: Indicators, 
+  outputPath: string
+): Promise<void> {
+  const width = 800
+  const height = 400
+  const margin = { top: 40, right: 20, bottom: 40, left: 60 }
+  const chartWidth = width - margin.left - margin.right
+  const chartHeight = height - margin.top - margin.bottom
+
+  const recentData = data.slice(-60) // Show 60 days for candlesticks
+  const allPrices = recentData.flatMap(d => [d.high, d.low])
+  const minPrice = Math.min(...allPrices) * 0.98
+  const maxPrice = Math.max(...allPrices) * 1.02
+
+  const candleWidth = chartWidth / recentData.length
+  const yScale = (p: number) => margin.top + chartHeight - ((p - minPrice) / (maxPrice - minPrice)) * chartHeight
+
+  const candles = recentData.map((d, i) => {
+    const x = margin.left + i * candleWidth + candleWidth * 0.1
+    const bodyWidth = candleWidth * 0.6
+    const isGreen = d.close > d.open
+    const color = isGreen ? '#00ff88' : '#ff4444'
+    
+    const highY = yScale(d.high)
+    const lowY = yScale(d.low)
+    const openY = yScale(d.open)
+    const closeY = yScale(d.close)
+    const bodyTop = Math.min(openY, closeY)
+    const bodyHeight = Math.abs(closeY - openY)
+    
+    return `
+      <line x1="${(x + bodyWidth/2).toFixed(2)}" y1="${highY.toFixed(2)}" x2="${(x + bodyWidth/2).toFixed(2)}" y2="${lowY.toFixed(2)}" stroke="${color}" stroke-width="1" />
+      <rect x="${x.toFixed(2)}" y="${bodyTop.toFixed(2)}" width="${bodyWidth.toFixed(2)}" height="${Math.max(bodyHeight, 1).toFixed(2)}" fill="${color}" stroke="${color}" stroke-width="1" />
+    `
+  }).join('\n')
+
+  const yLabels = Array.from({ length: 6 }, (_, i) => {
+    const price = minPrice + (maxPrice - minPrice) * (i / 5)
+    const y = margin.top + chartHeight - (chartHeight / 5) * i
+    return `<text x="${margin.left - 10}" y="${(y + 4).toFixed(2)}" fill="#fff" font-size="12" text-anchor="end">$${price.toFixed(2)}</text>`
+  }).join('\n')
+
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+  <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+    <rect x="0" y="0" width="${width}" height="${height}" fill="#1a1a1a" />
+    ${candles}
+    <text x="${width / 2}" y="25" fill="#fff" font-size="14" text-anchor="middle">Price History (Candlestick - Last 60 Days)</text>
+    ${yLabels}
+  </svg>`
+
+  await fs.writeFile(outputPath, svg, 'utf-8')
+}
+
+// Render area chart as SVG
+async function renderAreaChart(
+  data: OHLCV[], 
+  indicators: Indicators, 
+  outputPath: string
+): Promise<void> {
+  const width = 800
+  const height = 400
+  const margin = { top: 40, right: 20, bottom: 40, left: 60 }
+  const chartWidth = width - margin.left - margin.right
+  const chartHeight = height - margin.top - margin.bottom
+
+  const recentData = data.slice(-90)
+  const prices = recentData.map(d => d.close)
+  const minPrice = Math.min(...prices) * 0.98
+  const maxPrice = Math.max(...prices) * 1.02
+
+  const xScale = (i: number) => margin.left + (i / Math.max(1, recentData.length - 1)) * chartWidth
+  const yScale = (p: number) => margin.top + chartHeight - ((p - minPrice) / (maxPrice - minPrice)) * chartHeight
+
+  const pricePoints = recentData.map((d, i) => `${xScale(i).toFixed(2)},${yScale(d.close).toFixed(2)}`).join(' ')
+  const areaPoints = `${margin.left},${margin.top + chartHeight} ${pricePoints} ${margin.left + chartWidth},${margin.top + chartHeight}`
+
+  const yLabels = Array.from({ length: 6 }, (_, i) => {
+    const price = minPrice + (maxPrice - minPrice) * (i / 5)
+    const y = margin.top + chartHeight - (chartHeight / 5) * i
+    return `<text x="${margin.left - 10}" y="${(y + 4).toFixed(2)}" fill="#fff" font-size="12" text-anchor="end">$${price.toFixed(2)}</text>`
+  }).join('\n')
+
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+  <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+    <rect x="0" y="0" width="${width}" height="${height}" fill="#1a1a1a" />
+    <polygon points="${areaPoints}" fill="rgba(0,255,136,0.2)" />
+    <polyline fill="none" stroke="#00ff88" stroke-width="2" points="${pricePoints}" />
+    <text x="${width / 2}" y="25" fill="#fff" font-size="14" text-anchor="middle">Price History (Area Chart - Last 90 Days)</text>
+    ${yLabels}
   </svg>`
 
   await fs.writeFile(outputPath, svg, 'utf-8')

@@ -112,16 +112,29 @@ export async function POST(req: Request) {
         const horizonDays = horizonMatch ? Math.min(365, Math.max(1, parseInt(horizonMatch[1], 10))) : 30
         const granularity: '1h' | '4h' | '1d' = /\b1h\b/i.test(lastUserMsg) ? '1h' : /\b4h\b/i.test(lastUserMsg) ? '4h' : '1d'
 
+        // Detect chart type from user message
+        let chartType: 'line' | 'bar' | 'candlestick' | 'area' = 'line'
+        if (/\b(bar|bars|bar\s+chart)\b/i.test(lastUserMsg)) chartType = 'bar'
+        else if (/\b(candlestick|candle|ohlc)\b/i.test(lastUserMsg)) chartType = 'candlestick'
+        else if (/\b(area|area\s+chart)\b/i.test(lastUserMsg)) chartType = 'area'
+        else if (/\b(line|linear|line\s+chart|linear\s+graph)\b/i.test(lastUserMsg)) chartType = 'line'
+
         // Fetch historical data for context (1 year by default)
         const historicalContext = await fetchHistoricalData(coin, 365, false).catch(() => null)
 
-        const resp = await analyzeCoin({ coin, horizonDays, granularity, tasks: ['analysis', 'prediction', 'strategy', 'charts'] })
+        const resp = await analyzeCoin({ coin, horizonDays, granularity, chartType, tasks: ['analysis', 'prediction', 'strategy', 'charts'] })
         if (!resp.ok) {
           return NextResponse.json({ ok: true, content: `❌ MCP error: ${resp.error || 'Unknown error'}${health.ok ? '' : `\nHealth: ${health.message || 'unreachable'}`}` , threadId: config.configurable.thread_id })
         }
 
         // Format a concise response for chat
         const parts: string[] = []
+        
+        // Add methodology explanation first (transparency)
+        if (resp.methodology) {
+          const m = resp.methodology
+          parts.push(`🔍 **Prediction Methodology**\n📊 Analyzed: ${m.dataPoints} data points over ${m.timeframe}\n🧮 Method: ${m.method}\n📈 Indicators: ${m.indicators.join(', ')}\n🎯 Confidence: ${m.confidenceFactors}`)
+        }
         
         // Add historical context if available
         if (historicalContext?.ok && historicalContext.statistics) {
@@ -139,10 +152,27 @@ export async function POST(req: Request) {
           const s = resp.strategies.slice(0, 2).map(x => `• ${x.name} (${x.risk}) — ${x.description}`).join('\n')
           parts.push(`Strategies:\n${s}`)
         }
+        
+        // Fetch and embed SVG charts directly in chat
         if (resp.charts?.length) {
-          const c = resp.charts.slice(0, 3).map(x => `• ${x.title}: ${x.url}`).join('\n')
-          parts.push(`Charts:\n${c}`)
+          for (const chart of resp.charts) {
+            try {
+              // Fetch SVG content from MCP server
+              const svgResponse = await fetch(chart.url)
+              if (svgResponse.ok) {
+                const svgContent = await svgResponse.text()
+                // Embed SVG directly without wrapper div
+                parts.push(`\n**${chart.title}**\n${svgContent}`)
+              } else {
+                parts.push(`📊 ${chart.title}: [View Chart](${chart.url})`)
+              }
+            } catch (err) {
+              // Fallback to link if fetch fails
+              parts.push(`📊 ${chart.title}: [View Chart](${chart.url})`)
+            }
+          }
         }
+        
         if (!parts.length) parts.push('No analysis available from MCP.')
 
         return NextResponse.json({ ok: true, content: parts.join('\n\n'), threadId: config.configurable.thread_id })

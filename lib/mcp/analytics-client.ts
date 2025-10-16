@@ -10,6 +10,7 @@ export type AnalysisRequest = {
   horizonDays?: number
   granularity?: '1h' | '4h' | '1d'
   tasks?: Array<'analysis' | 'prediction' | 'strategy' | 'charts'>
+  chartType?: 'line' | 'bar' | 'candlestick' | 'area'
 }
 
 export type AnalysisResponse = {
@@ -19,6 +20,13 @@ export type AnalysisResponse = {
   predictions?: Array<{ date: string; price: number; probability?: number }>
   strategies?: Array<{ name: string; description: string; risk: 'low' | 'medium' | 'high' }>
   charts?: Array<{ title: string; url: string }>
+  methodology?: {
+    dataPoints: number
+    timeframe: string
+    method: string
+    indicators: string[]
+    confidenceFactors: string
+  }
   raw?: any
   error?: string
 }
@@ -54,6 +62,7 @@ export async function analyzeCoin(req: AnalysisRequest): Promise<AnalysisRespons
       horizonDays: req.horizonDays ?? 30,
       granularity: req.granularity ?? '1d',
       tasks: req.tasks ?? ['analysis', 'prediction', 'strategy', 'charts'],
+      chartType: req.chartType ?? 'line',
     }
 
     const res = await fetch(`${baseUrl.replace(/\/$/, '')}/analyze`, {
@@ -78,6 +87,7 @@ export async function analyzeCoin(req: AnalysisRequest): Promise<AnalysisRespons
       predictions: Array.isArray(json.predictions) ? json.predictions : undefined,
       strategies: Array.isArray(json.strategies) ? json.strategies : undefined,
       charts: Array.isArray(json.charts) ? json.charts : undefined,
+      methodology: json.methodology || undefined,
       raw: json,
     }
     return normalized
