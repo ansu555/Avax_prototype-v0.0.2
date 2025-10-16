@@ -299,12 +299,81 @@ Use these keywords in your balance or portfolio queries to specify the address.
 -   `/api/price/`: Could be used for direct price queries (currently handled within the agent).
 -   `/api/poller/`, `/api/rules/`, `/api/logs/`: Support for background tasks and internal tooling.
 
-## 📖 Documentation
+## � MCP Analytics Server
+
+The project includes an **MCP (Market Context Protocol) Analytics Server** that provides advanced crypto market analysis, predictions, trading strategies, and chart generation.
+
+### Features
+
+- 📈 **Technical Analysis**: RSI, MACD, Moving Averages, Volatility indicators
+- 🔮 **Price Predictions**: 7-day forecasts with probability scores
+- 💡 **Trading Strategies**: DCA, momentum, mean reversion, trend following
+- 📉 **Chart Generation**: SVG charts with historical data and forecasts
+
+### Setup
+
+1. **Install MCP Server Dependencies**
+   ```bash
+   cd mcp_server
+   npm install
+   ```
+
+2. **Configure MCP Environment**
+   ```bash
+   cd mcp_server
+   cp .env.example .env
+   # Edit .env with your settings
+   ```
+
+3. **Start MCP Server**
+   ```bash
+   # Development (with auto-reload)
+   npm run dev
+   
+   # Production
+   npm start
+   ```
+
+   The MCP server will run on `http://localhost:8080` by default.
+
+4. **Configure Next.js to Connect**
+   
+   Add to your `.env.local`:
+   ```env
+   MCP_ANALYTICS_URL=http://localhost:8080
+   MCP_ANALYTICS_API_KEY=your-secret-key-here
+   ```
+
+### Using MCP in Chat
+
+Once running, you can ask the AI agent to analyze coins:
+
+**Examples:**
+- `"Analyze BTC"`
+- `"Give me a 30-day forecast for ETH"`
+- `"What's the trading strategy for AVAX?"`
+- `"Show me charts for SOL"`
+- `"Predict Bitcoin price for next 7 days"`
+
+The agent will automatically detect analysis requests and call the MCP server to provide:
+- Market summaries with current trends
+- Technical indicator insights (RSI, MACD, Moving Averages)
+- Price predictions with confidence levels
+- Recommended trading strategies based on market conditions
+- Interactive charts with historical data and forecasts
+
+### MCP Documentation
+
+For detailed MCP server documentation, see:
+- **[MCP Server README](./mcp_server/README.md)**: Complete API reference, configuration options, and development guide
+
+## �📖 Documentation
 
 ### Architecture Documentation
 
 - **[📋 System Architecture](./SYSTEM_ARCHITECTURE.md)**: Comprehensive system overview, multi-chain infrastructure, technology stack, data flow, and security considerations
 - **[🔧 Backend Architecture](./BACKEND_ARCHITECTURE.md)**: Detailed technical implementation, agent factory patterns, transaction pipeline, AI integration, and performance optimization
+- **[📊 MCP Server](./mcp_server/README.md)**: Analytics server API reference and setup guide
 
 ### Quick Links
 
@@ -312,10 +381,12 @@ Use these keywords in your balance or portfolio queries to specify the address.
 - [🔧 API Keys & Configuration](#-api-keys--configuration) - Complete setup guide with all API sources
 - [🤖 AI Agent Features](#-ai-agent-features) - Understanding the AI chat capabilities
 - [📡 API Endpoints](#-api-endpoints) - Backend API reference
+- [📊 MCP Analytics](#-mcp-analytics-server) - Market analysis and predictions
 
 ### Support
 
 For questions or issues:
 1. Check the [System Architecture](./SYSTEM_ARCHITECTURE.md) for high-level understanding
 2. Review the [Backend Architecture](./BACKEND_ARCHITECTURE.md) for implementation details
-3. Ensure all API keys are correctly configured using the [configuration guide](#-api-keys--configuration)
+3. See the [MCP Server README](./mcp_server/README.md) for analytics integration
+4. Ensure all API keys are correctly configured using the [configuration guide](#-api-keys--configuration)

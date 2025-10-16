@@ -10,7 +10,8 @@
     "build:poller": "tsc -p tsconfig.poller.json",
     "run:poller": "npm run build:poller && node scripts/run-poller.js",
     "dev:cron": "npm run build:poller && node scripts/dev-cron.js",
-    "test:custom-swap": "tsx scripts/test-custom-swap.ts"
+    "test:custom-swap": "tsx scripts/test-custom-swap.ts",
+    "mcp": "tsx scripts/start-mcp-server-with-env.ts"
   },
   "dependencies": {
     "@0xgasless/agentkit": "^0.0.16",

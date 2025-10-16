@@ -5,6 +5,7 @@ import { HumanMessage, AIMessage, SystemMessage, ToolMessage, BaseMessage } from
 import { MemorySaver } from "@langchain/langgraph"
 import { createReactAgent } from "@langchain/langgraph/prebuilt"
 import { getAgent } from "@/lib/agent"
+import { analyzeCoin, mcpHealth } from "@/lib/mcp/analytics-client"
 import { resolveTokenBySymbol } from "@/lib/tokens"
 import { parseEther } from "viem"
 
@@ -86,6 +87,49 @@ export async function POST(req: Request) {
     // === EARLY INTENT DETECTION (bypasses LLM for reliable data) ===
     const lastUserMsg = [...incoming].reverse().find(m => m.role === 'user')?.content || ''
     const text = lastUserMsg.toLowerCase().trim()
+    // MCP analytics intents: analyze, predict, strategy, chart requests
+    const mcpIntent = /(analy[sz]e|prediction|predict|forecast|strategy|strategies|portfolio\s+strategy|chart|charts|graph|graphs)/i.test(lastUserMsg)
+    // If user explicitly asks for analysis of a specific coin
+    const mcpCoinMatch = lastUserMsg.match(/(?:of|for|on|about)\s+([a-z0-9\-]{2,40})/i) || lastUserMsg.match(/\b([A-Za-z]{2,10})\b\s+(?:analysis|forecast|prediction|strategy)/i)
+    if (mcpIntent && mcpCoinMatch) {
+      try {
+        // Basic health check first (non-fatal if it fails, we continue and surface error)
+        const health = await mcpHealth()
+        const coinRaw = (mcpCoinMatch[1] || '').trim()
+        const coin = coinRaw.toLowerCase()
+        const horizonMatch = lastUserMsg.match(/(?:next|over|for)\s+(\d{1,3})\s*(?:days?|d)/i)
+        const horizonDays = horizonMatch ? Math.min(365, Math.max(1, parseInt(horizonMatch[1], 10))) : 30
+        const granularity: '1h' | '4h' | '1d' = /\b1h\b/i.test(lastUserMsg) ? '1h' : /\b4h\b/i.test(lastUserMsg) ? '4h' : '1d'
+
+        const resp = await analyzeCoin({ coin, horizonDays, granularity, tasks: ['analysis', 'prediction', 'strategy', 'charts'] })
+        if (!resp.ok) {
+          return NextResponse.json({ ok: true, content: `❌ MCP error: ${resp.error || 'Unknown error'}${health.ok ? '' : `\nHealth: ${health.message || 'unreachable'}`}` , threadId: config.configurable.thread_id })
+        }
+
+        // Format a concise response for chat
+        const parts: string[] = []
+        if (resp.summary) parts.push(`📊 ${resp.summary}`)
+        if (resp.insights?.length) parts.push(`Insights:\n- ${resp.insights.slice(0, 5).join('\n- ')}`)
+        if (resp.predictions?.length) {
+          const next3 = resp.predictions.slice(0, 3).map(p => `• ${p.date}: $${Number(p.price).toFixed(4)}${p.probability ? ` (${Math.round((p.probability || 0) * 100)}%)` : ''}`).join('\n')
+          parts.push(`Forecast (next):\n${next3}`)
+        }
+        if (resp.strategies?.length) {
+          const s = resp.strategies.slice(0, 2).map(x => `• ${x.name} (${x.risk}) — ${x.description}`).join('\n')
+          parts.push(`Strategies:\n${s}`)
+        }
+        if (resp.charts?.length) {
+          const c = resp.charts.slice(0, 3).map(x => `• ${x.title}: ${x.url}`).join('\n')
+          parts.push(`Charts:\n${c}`)
+        }
+        if (!parts.length) parts.push('No analysis available from MCP.')
+
+        return NextResponse.json({ ok: true, content: parts.join('\n\n'), threadId: config.configurable.thread_id })
+      } catch (e: any) {
+        return NextResponse.json({ ok: true, content: `❌ MCP request failed: ${e?.message || String(e)}`, threadId: config.configurable.thread_id })
+      }
+    }
+
     
     // Top coins with dynamic count - "top 5 coins", "show me 15 cryptocurrencies", etc.
     let topCoinsMatch = text.match(/top\s+(\d+)\s+(?:coin|crypto|cryptocurrency|token)/i)
