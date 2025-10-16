@@ -88,10 +88,20 @@ export async function POST(req: Request) {
     const lastUserMsg = [...incoming].reverse().find(m => m.role === 'user')?.content || ''
     const text = lastUserMsg.toLowerCase().trim()
     // MCP analytics intents: analyze, predict, strategy, chart requests
-    const mcpIntent = /(analy[sz]e|prediction|predict|forecast|strategy|strategies|portfolio\s+strategy|chart|charts|graph|graphs)/i.test(lastUserMsg)
+    const mcpIntent = /(analy[sz]e|analysis|prediction|predict|forecast|strategy|strategies|portfolio\s+strategy|chart|charts|graph|graphs)/i.test(lastUserMsg)
     // If user explicitly asks for analysis of a specific coin
-    const mcpCoinMatch = lastUserMsg.match(/(?:of|for|on|about)\s+([a-z0-9\-]{2,40})/i) || lastUserMsg.match(/\b([A-Za-z]{2,10})\b\s+(?:analysis|forecast|prediction|strategy)/i)
-    if (mcpIntent && mcpCoinMatch) {
+    // Improved pattern: matches "analyze bitcoin", "bitcoin analysis", "forecast for eth", etc.
+    const mcpCoinMatch = 
+      lastUserMsg.match(/(?:analy[sz]e|predict|forecast|strategy|chart)\s+([a-z0-9\-]{2,40})/i) ||  // "analyze bitcoin"
+      lastUserMsg.match(/(?:of|for|on|about)\s+([a-z0-9\-]{2,40})/i) ||                               // "analysis of bitcoin"
+      lastUserMsg.match(/\b([A-Za-z]{2,10})\b\s+(?:analysis|forecast|prediction|strategy)/i)          // "bitcoin analysis"
+    
+    // Filter out common words that aren't coins
+    const blacklistedWords = ['previous', 'next', 'last', 'first', 'current', 'latest', 'recent', 'today', 'yesterday', 'tomorrow', 'this', 'that', 'these', 'those', 'same', 'other', 'another', 'some', 'any', 'all', 'each', 'every', 'both', 'few', 'many', 'more', 'most', 'several', 'such']
+    const coinName = mcpCoinMatch?.[1]?.toLowerCase()
+    const isValidCoin = coinName && !blacklistedWords.includes(coinName)
+    
+    if (mcpIntent && mcpCoinMatch && isValidCoin) {
       try {
         // Basic health check first (non-fatal if it fails, we continue and surface error)
         const health = await mcpHealth()

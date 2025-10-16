@@ -148,7 +148,7 @@ app.post('/analyze', async (req: Request, res: Response) => {
   }
 })
 
-// Data fetching (using CoinGecko as example)
+// Data fetching (using CoinGecko API)
 async function fetchHistoricalData(
   coin: string, 
   days: number, 
@@ -158,23 +158,89 @@ async function fetchHistoricalData(
     // Map common symbols to CoinGecko IDs
     const coinMap: Record<string, string> = {
       'btc': 'bitcoin',
+      'bitcoin': 'bitcoin',
       'eth': 'ethereum',
+      'ethereum': 'ethereum',
       'sol': 'solana',
+      'solana': 'solana',
       'avax': 'avalanche-2',
+      'avalanche': 'avalanche-2',
       'ada': 'cardano',
+      'cardano': 'cardano',
       'dot': 'polkadot',
+      'polkadot': 'polkadot',
       'matic': 'matic-network',
+      'polygon': 'matic-network',
       'link': 'chainlink',
+      'chainlink': 'chainlink',
     }
 
     const coinId = coinMap[coin.toLowerCase()] || coin.toLowerCase()
     
-    // For demo: generate synthetic data based on coin
+    // Try to fetch REAL data from CoinGecko
+    try {
+      const realData = await fetchCoinGeckoData(coinId, days)
+      if (realData.length > 0) {
+        console.log(`✅ Fetched ${realData.length} real data points for ${coinId}`)
+        return realData
+      }
+    } catch (apiError) {
+      console.warn(`⚠️ CoinGecko API failed for ${coinId}, falling back to synthetic data:`, apiError)
+    }
+    
+    // Fallback: generate synthetic data based on coin
+    console.log(`⚠️ Using synthetic data for ${coinId}`)
     return generateSyntheticData(coinId, days, granularity)
   } catch (error) {
     console.error('Data fetch error:', error)
     return []
   }
+}
+
+// Fetch real data from CoinGecko API
+async function fetchCoinGeckoData(coinId: string, days: number): Promise<OHLCV[]> {
+  const apiKey = process.env.COINGECKO_API_KEY || process.env.NEXT_PUBLIC_COINGECKO_API_KEY
+  const baseUrl = 'https://api.coingecko.com/api/v3'
+  
+  // CoinGecko market_chart endpoint
+  const url = apiKey 
+    ? `${baseUrl}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&x_cg_demo_api_key=${apiKey}`
+    : `${baseUrl}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}`
+  
+  const response = await fetch(url)
+  
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(`Coin "${coinId}" not found on CoinGecko. Please check the coin name/symbol.`)
+    }
+    throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`)
+  }
+  
+  const data: any = await response.json()
+  
+  // CoinGecko returns: { prices: [[timestamp, price], ...], market_caps: [...], total_volumes: [...] }
+  if (!data.prices || data.prices.length === 0) {
+    throw new Error('No price data returned from CoinGecko')
+  }
+  
+  // Convert to OHLCV format (we approximate OHLC from single price points)
+  const ohlcvData: OHLCV[] = data.prices.map((pricePoint: [number, number], index: number) => {
+    const [timestamp, price] = pricePoint
+    const volume = data.total_volumes[index]?.[1] || 0
+    
+    // Since CoinGecko only gives us close prices, we approximate OHLC
+    const variance = price * 0.002 // 0.2% variance for realistic OHLC
+    return {
+      timestamp,
+      open: price * (1 + (Math.random() - 0.5) * variance),
+      high: price * (1 + Math.random() * variance * 0.5),
+      low: price * (1 - Math.random() * variance * 0.5),
+      close: price,
+      volume
+    }
+  })
+  
+  return ohlcvData
 }
 
 // Generate synthetic OHLCV data for demo
