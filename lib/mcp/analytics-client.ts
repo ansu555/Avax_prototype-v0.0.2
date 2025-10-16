@@ -27,6 +27,7 @@ export type AnalysisResponse = {
     indicators: string[]
     confidenceFactors: string
   }
+  overallAnalysis?: string
   raw?: any
   error?: string
 }

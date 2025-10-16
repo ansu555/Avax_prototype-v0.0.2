@@ -50,6 +50,7 @@ interface AnalyzeResponse {
   insights?: string[]
   predictions?: Prediction[]
   strategies?: Strategy[]
+  overallAnalysis?: string  // Overall summary at the end
   charts?: Chart[]
   methodology?: {
     dataPoints: number
@@ -155,6 +156,18 @@ app.post('/analyze', async (req: Request, res: Response) => {
         chartType // Pass chart type preference
       )
     }
+    
+    // Generate overall analysis summary (appears at the end, before charts)
+    if (response.summary || response.insights || response.predictions || response.strategies) {
+      const indicators = computeIndicators(historicalData)
+      response.overallAnalysis = generateOverallAnalysis(
+        coin, 
+        currentPrice, 
+        indicators, 
+        response.predictions || [],
+        response.strategies || []
+      )
+    }
 
     res.json(response)
   } catch (error: any) {
@@ -172,6 +185,46 @@ app.post('/analyze', async (req: Request, res: Response) => {
       suggestion: isNotFound 
         ? 'Try using common symbols like: btc, eth, avax, sol, ada, dot, matic, link'
         : 'Please try again or check your CoinGecko API key configuration.'
+    })
+  }
+})
+
+// Suggest auto-pilot rules endpoint
+app.post('/suggest-rule', async (req: Request, res: Response) => {
+  // Auth check
+  if (API_KEY && req.headers.authorization !== `Bearer ${API_KEY}`) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' })
+  }
+
+  const { coin, horizonDays = 30 } = req.body || {}
+
+  if (!coin) {
+    return res.status(400).json({ ok: false, error: 'coin parameter is required' })
+  }
+
+  try {
+    // Fetch historical data for analysis
+    const historicalData = await fetchHistoricalData(coin, horizonDays, '1d')
+    
+    if (historicalData.length === 0) {
+      return res.status(404).json({ 
+        ok: false, 
+        error: `No data available for "${coin}". Please check the coin symbol.` 
+      })
+    }
+
+    const currentPrice = historicalData[historicalData.length - 1].close
+    const indicators = computeIndicators(historicalData)
+    
+    // Generate rule suggestions based on market conditions
+    const suggestions = generateRuleSuggestions(coin, indicators, currentPrice, historicalData)
+    
+    res.json({ ok: true, coin, suggestions })
+  } catch (error: any) {
+    console.error('Rule suggestion error:', error)
+    res.status(500).json({ 
+      ok: false, 
+      error: error?.message || 'Failed to generate rule suggestions'
     })
   }
 })
@@ -363,6 +416,99 @@ function calculateVolatility(prices: number[], period: number): number {
   return Math.sqrt(variance)
 }
 
+// Generate overall analysis summary (appears at the end)
+function generateOverallAnalysis(
+  coin: string,
+  currentPrice: number,
+  indicators: Indicators,
+  predictions: Prediction[],
+  strategies: Strategy[]
+): string {
+  const { rsi, sma30, sma50, macd, trend, volatility } = indicators
+  const parts: string[] = []
+  
+  // 1. Market Condition Assessment
+  const trendStrength = Math.abs((sma30 - sma50) / sma50 * 100)
+  let marketCondition = ''
+  if (trend === 'bullish' && trendStrength > 5) {
+    marketCondition = `${coin.toUpperCase()} is in a **strong bullish trend** with clear upward momentum`
+  } else if (trend === 'bullish') {
+    marketCondition = `${coin.toUpperCase()} is showing **early bullish signals** with emerging upward momentum`
+  } else if (trend === 'bearish' && trendStrength > 5) {
+    marketCondition = `${coin.toUpperCase()} is in a **strong bearish trend** with persistent downward pressure`
+  } else if (trend === 'bearish') {
+    marketCondition = `${coin.toUpperCase()} is showing **bearish signals** with developing downward pressure`
+  } else {
+    marketCondition = `${coin.toUpperCase()} is **consolidating** in a neutral trading range`
+  }
+  parts.push(marketCondition)
+  
+  // 2. Key Technical Levels
+  if (rsi < 30) {
+    parts.push(`The RSI at ${rsi.toFixed(1)} indicates the asset is **oversold**, presenting a potential accumulation opportunity for long-term investors.`)
+  } else if (rsi > 70) {
+    parts.push(`The RSI at ${rsi.toFixed(1)} shows the asset is **overbought**, suggesting profit-taking or caution for new entries is warranted.`)
+  } else if (rsi < 45) {
+    parts.push(`The RSI at ${rsi.toFixed(1)} reflects **bearish sentiment**, though not yet oversold. Further downside is possible.`)
+  } else if (rsi > 55) {
+    parts.push(`The RSI at ${rsi.toFixed(1)} reflects **bullish sentiment**, though not yet overbought. Upside momentum is building.`)
+  } else {
+    parts.push(`The RSI at ${rsi.toFixed(1)} indicates **balanced market conditions** with no clear directional bias from buyers or sellers.`)
+  }
+  
+  // 3. Moving Average Analysis
+  if (trend === 'bullish') {
+    parts.push(`The 30-day MA ($${sma30.toFixed(2)}) trading above the 50-day MA ($${sma50.toFixed(2)}) confirms the bullish trend and provides dynamic support.`)
+  } else {
+    parts.push(`The 30-day MA ($${sma30.toFixed(2)}) trading below the 50-day MA ($${sma50.toFixed(2)}) confirms the bearish trend and creates overhead resistance.`)
+  }
+  
+  // 4. Short-term Forecast Analysis
+  if (predictions.length > 0) {
+    const firstPrediction = predictions[0]
+    const lastPrediction = predictions[Math.min(2, predictions.length - 1)]
+    const forecastChange = ((lastPrediction.price - currentPrice) / currentPrice * 100).toFixed(2)
+    const direction = parseFloat(forecastChange) >= 0 ? 'upward' : 'downward'
+    const avgConfidence = predictions.slice(0, 3).reduce((acc, p) => acc + (p.probability || 0), 0) / Math.min(3, predictions.length) * 100
+    
+    parts.push(`The short-term forecast suggests a ${direction} trajectory toward $${lastPrediction.price.toFixed(2)} (${forecastChange >= '0' ? '+' : ''}${forecastChange}%) over the next 3 days with ${avgConfidence.toFixed(0)}% average confidence.`)
+  }
+  
+  // 5. Recommended Strategy Summary
+  if (strategies.length > 0) {
+    const primaryStrategy = strategies[0]
+    const riskLevels = strategies.map(s => s.risk)
+    const overallRisk = riskLevels.includes('high') ? 'elevated' : riskLevels.includes('medium') ? 'moderate' : 'low'
+    
+    parts.push(`**Recommended Action**: ${primaryStrategy.description.split('-')[0].trim()}. Overall risk level is **${overallRisk}**.`)
+  }
+  
+  // 6. Risk Disclaimer
+  const volPct = (volatility / currentPrice * 100).toFixed(1)
+  if (parseFloat(volPct) > 5) {
+    parts.push(`⚠️ **Important**: Current volatility is high (${volPct}%). Use strict risk management, smaller position sizes, and consider dollar-cost averaging to reduce timing risk.`)
+  } else {
+    parts.push(`📊 **Risk Management**: With moderate volatility (${volPct}%), standard risk management practices apply. Always use stop losses and size positions appropriately.`)
+  }
+  
+  // 7. Final Recommendation
+  let finalRec = ''
+  if (trend === 'bearish' && rsi < 35) {
+    finalRec = `**Outlook**: Bearish trend with oversold conditions suggests a **cautious accumulation** approach using DCA for long-term positions. Wait for trend reversal confirmation before aggressive entries.`
+  } else if (trend === 'bullish' && rsi > 50 && rsi < 70) {
+    finalRec = `**Outlook**: Bullish trend with healthy momentum suggests **continued upside potential**. Consider accumulation on dips toward the 30-day MA support level.`
+  } else if (trend === 'bullish' && rsi > 70) {
+    finalRec = `**Outlook**: Bullish but overbought. Exercise caution with new entries. Consider **profit-taking** on existing positions or waiting for a pullback to better entry levels.`
+  } else if (trend === 'bearish' && rsi > 50) {
+    finalRec = `**Outlook**: Bearish trend despite elevated RSI suggests a **distribution phase**. Avoid new long positions until trend reversal signals emerge.`
+  } else {
+    finalRec = `**Outlook**: Neutral/consolidating market. Best approached with **patience and range-trading tactics**. Wait for breakout/breakdown confirmation before committing capital.`
+  }
+  parts.push(finalRec)
+  
+  return parts.join(' ')
+}
+
 // Generate summary
 function generateSummary(
   coin: string, 
@@ -384,31 +530,79 @@ function generateSummary(
 function generateInsights(indicators: Indicators): string[] {
   const insights: string[] = []
   
-  // RSI insight
-  if (indicators.rsi > 70) {
-    insights.push(`RSI at ${indicators.rsi.toFixed(1)} indicates overbought conditions`)
-  } else if (indicators.rsi < 30) {
-    insights.push(`RSI at ${indicators.rsi.toFixed(1)} suggests oversold conditions`)
+  const { rsi, sma30, sma50, macd, volatility, trend } = indicators
+  
+  // 1. RSI Analysis (detailed)
+  if (rsi > 80) {
+    insights.push(`🔴 RSI at ${rsi.toFixed(1)} - Extremely overbought territory. Strong selling pressure likely. Consider taking profits or hedging positions.`)
+  } else if (rsi > 70) {
+    insights.push(`🟡 RSI at ${rsi.toFixed(1)} - Overbought conditions. Price may face resistance. Watch for reversal signals.`)
+  } else if (rsi < 20) {
+    insights.push(`🟢 RSI at ${rsi.toFixed(1)} - Deeply oversold. Strong bounce potential. Prime accumulation zone for long-term holders.`)
+  } else if (rsi < 30) {
+    insights.push(`🟢 RSI at ${rsi.toFixed(1)} - Oversold conditions. Price may be undervalued. Consider dollar-cost averaging.`)
+  } else if (rsi >= 45 && rsi <= 55) {
+    insights.push(`⚪ RSI at ${rsi.toFixed(1)} - Neutral momentum. Market is balanced between buyers and sellers. Wait for clearer signals.`)
+  } else if (rsi < 45) {
+    insights.push(`🔵 RSI at ${rsi.toFixed(1)} - Below neutral. Bearish bias with potential for further downside or stabilization.`)
   } else {
-    insights.push(`RSI at ${indicators.rsi.toFixed(1)} shows neutral momentum`)
+    insights.push(`🔵 RSI at ${rsi.toFixed(1)} - Above neutral. Bullish bias but not yet overbought. Upward momentum building.`)
   }
   
-  // MA insight
-  if (indicators.sma30 > indicators.sma50) {
-    insights.push('30-day MA above 50-day MA indicates bullish momentum')
+  // 2. Moving Average Trend (detailed)
+  const maDiff = ((sma30 - sma50) / sma50 * 100).toFixed(2)
+  if (sma30 > sma50) {
+    if (parseFloat(maDiff) > 5) {
+      insights.push(`📈 Strong bullish trend: 30-day MA is ${maDiff}% above 50-day MA. Trend is well-established and likely to continue.`)
+    } else if (parseFloat(maDiff) > 2) {
+      insights.push(`📈 Bullish trend: 30-day MA is ${maDiff}% above 50-day MA. Upward momentum confirmed but watch for consolidation.`)
+    } else {
+      insights.push(`📈 Emerging bullish trend: 30-day MA just crossed above 50-day MA (+${maDiff}%). Early bullish signal - confirm with volume.`)
+    }
   } else {
-    insights.push('30-day MA below 50-day MA suggests bearish pressure')
+    if (parseFloat(maDiff) < -5) {
+      insights.push(`📉 Strong bearish trend: 30-day MA is ${maDiff}% below 50-day MA. Downtrend is dominant. Wait for reversal signs.`)
+    } else if (parseFloat(maDiff) < -2) {
+      insights.push(`📉 Bearish trend: 30-day MA is ${maDiff}% below 50-day MA. Downward pressure persists. Consider defensive strategies.`)
+    } else {
+      insights.push(`📉 Emerging bearish trend: 30-day MA just crossed below 50-day MA (${maDiff}%). Early bearish signal - monitor closely.`)
+    }
   }
   
-  // MACD insight
-  if (indicators.macd.histogram > 0) {
-    insights.push('MACD histogram positive, suggesting upward momentum')
+  // 3. MACD Analysis (detailed)
+  const macdValue = macd.value.toFixed(4)
+  const macdSignal = macd.signal.toFixed(4)
+  const macdHist = macd.histogram.toFixed(4)
+  
+  if (macd.histogram > 0.5) {
+    insights.push(`💚 MACD strongly bullish: Histogram ${macdHist} shows strong buying momentum. MACD (${macdValue}) well above signal (${macdSignal}).`)
+  } else if (macd.histogram > 0) {
+    insights.push(`💚 MACD bullish: Histogram ${macdHist} positive. MACD (${macdValue}) above signal (${macdSignal}), suggesting upward momentum.`)
+  } else if (macd.histogram < -0.5) {
+    insights.push(`❤️ MACD strongly bearish: Histogram ${macdHist} shows strong selling pressure. MACD (${macdValue}) well below signal (${macdSignal}).`)
   } else {
-    insights.push('MACD histogram negative, indicating downward pressure')
+    insights.push(`❤️ MACD bearish: Histogram ${macdHist} negative. MACD (${macdValue}) below signal (${macdSignal}), indicating downward pressure.`)
   }
   
-  // Volatility insight
-  insights.push(`Volatility is ${indicators.volatility > 1000 ? 'high' : 'moderate'}, exercise caution with position sizing`)
+  // 4. Volatility Analysis (detailed)
+  const volPct = (volatility / sma30 * 100).toFixed(2)
+  if (parseFloat(volPct) > 10) {
+    insights.push(`⚠️ Very high volatility (${volPct}% of price): Expect large price swings. Use smaller position sizes and wider stop losses. High-risk environment.`)
+  } else if (parseFloat(volPct) > 5) {
+    insights.push(`⚠️ High volatility (${volPct}% of price): Significant price movements likely. Exercise caution with position sizing and risk management.`)
+  } else if (parseFloat(volPct) > 2) {
+    insights.push(`📊 Moderate volatility (${volPct}% of price): Normal market conditions. Standard risk management practices apply.`)
+  } else {
+    insights.push(`😴 Low volatility (${volPct}% of price): Market consolidating. Breakout may be imminent. Prepare for increased activity.`)
+  }
+  
+  // 5. Support/Resistance Levels
+  insights.push(`🎯 Key levels: Support near 30-day MA ($${sma30.toFixed(2)}), Resistance at 50-day MA ($${sma50.toFixed(2)}). Watch these for breakout/breakdown signals.`)
+  
+  // 6. Risk Assessment
+  const riskLevel = parseFloat(volPct) > 5 ? 'HIGH' : parseFloat(volPct) > 2 ? 'MODERATE' : 'LOW'
+  const trendStrength = Math.abs(parseFloat(maDiff)) > 5 ? 'STRONG' : Math.abs(parseFloat(maDiff)) > 2 ? 'MODERATE' : 'WEAK'
+  insights.push(`⚖️ Risk Profile: ${riskLevel} risk environment with ${trendStrength} ${trend} trend. Adjust strategy accordingly.`)
   
   return insights
 }
@@ -488,7 +682,7 @@ function calculateTrendStrength(prices: number[]): number {
   return Math.abs(correlation) // R-squared is correlation squared, but we use abs(correlation) for simplicity
 }
 
-// Generate strategies
+// Generate strategies (ONLY DCA, REBALANCE, ROTATE - matching Rule Builder)
 function generateStrategies(
   coin: string, 
   indicators: Indicators, 
@@ -496,119 +690,255 @@ function generateStrategies(
 ): Strategy[] {
   const strategies: Strategy[] = []
   
-  // Calculate additional metrics for better strategy selection
+  // Calculate metrics for strategy selection
   const rsi = indicators.rsi
   const macdHist = indicators.macd.histogram
   const trend = indicators.trend
   const volatility = indicators.volatility
+  const sma30 = indicators.sma30
+  const sma50 = indicators.sma50
   
   // Volatility-based risk adjustment
-  const isHighVolatility = volatility > currentPrice * 0.05
-  const isLowVolatility = volatility < currentPrice * 0.02
+  const volatilityPct = (volatility / currentPrice) * 100
+  const isHighVolatility = volatilityPct > 5
+  const isLowVolatility = volatilityPct < 2
   
-  // ALWAYS: DCA Strategy (but vary the description based on conditions)
-  if (isHighVolatility) {
+  // === STRATEGY 1: DCA (Dollar Cost Averaging) ===
+  // Good for: Accumulation over time, reducing entry risk
+  if (rsi < 50) {
+    // Oversold or neutral - good for accumulation
+    const severity = rsi < 30 ? 'oversold' : 'neutral'
     strategies.push({
-      name: 'DCA Core',
-      description: `High volatility detected - spread ${coin.toUpperCase()} purchases over 8-12 weeks to smooth entry`,
+      name: 'DCA Strategy',
+      description: `${coin.toUpperCase()} is ${severity} (RSI ${rsi.toFixed(1)}) - use DCA to accumulate on price drops ${rsi < 30 ? '≥3%' : '≥5%'}. Cooldown: ${rsi < 30 ? '30' : '60'} min.`,
       risk: 'low'
     })
-  } else if (trend === 'bearish') {
+  } else if (isHighVolatility) {
+    // High volatility - DCA smooths entry
     strategies.push({
-      name: 'DCA Core',
-      description: `Downtrend detected - accumulate ${coin.toUpperCase()} in small weekly chunks, target 3-6 month hold`,
+      name: 'DCA Strategy',
+      description: `High volatility (${volatilityPct.toFixed(1)}%) detected - use DCA to spread ${coin.toUpperCase()} purchases over time and reduce timing risk.`,
       risk: 'low'
     })
   } else {
+    // Default DCA for steady accumulation
     strategies.push({
-      name: 'DCA Core',
-      description: `Steady ${coin.toUpperCase()} accumulation over 4-8 weeks, rebalance monthly`,
+      name: 'DCA Strategy',
+      description: `Steady ${coin.toUpperCase()} accumulation - use DCA to build position gradually on 5-7% price drops.`,
       risk: 'low'
     })
   }
   
-  // Momentum strategy (if bullish with confirmation)
-  if (trend === 'bullish' && rsi > 45 && rsi < 70 && macdHist > 0) {
+  // === STRATEGY 2: REBALANCE ===
+  // Good for: Maintaining portfolio allocation, capturing trends
+  if (trend === 'bullish' && !isHighVolatility) {
     strategies.push({
-      name: 'Momentum Breakout',
-      description: `Strong uptrend with RSI at ${rsi.toFixed(1)} - enter with 3-5% position, 2% trailing stop`,
+      name: 'REBALANCE Strategy',
+      description: `${coin.toUpperCase()} showing bullish trend (30-MA > 50-MA) - use REBALANCE to capture upward momentum when trend strengthens ≥3% over 7 days.`,
       risk: 'medium'
     })
-  }
-  
-  // Mean reversion (if oversold)
-  if (rsi < 35) {
-    const severity = rsi < 25 ? 'deeply' : 'moderately'
+  } else if (trend === 'bearish' && rsi < 40) {
     strategies.push({
-      name: 'Mean Reversion',
-      description: `RSI ${rsi.toFixed(1)} is ${severity} oversold - accumulate 25-50% position, target RSI 50-60 exits`,
+      name: 'REBALANCE Strategy',
+      description: `${coin.toUpperCase()} in bearish trend (RSI ${rsi.toFixed(1)}) - use REBALANCE to reduce exposure when downtrend exceeds 5% over 7 days.`,
       risk: 'medium'
     })
-  } else if (rsi > 70) {
-    // Overbought - consider taking profits
+  } else if (isLowVolatility && trend === 'bullish') {
     strategies.push({
-      name: 'Profit Taking',
-      description: `RSI ${rsi.toFixed(1)} is overbought - scale out 20-40% of position, set trailing stops`,
+      name: 'REBALANCE Strategy',
+      description: `Low volatility (${volatilityPct.toFixed(1)}%) bullish trend - use REBALANCE to maintain target allocation when 30-day trend ≥2%.`,
       risk: 'low'
     })
   }
   
-  // Range trading (if neutral and low volatility)
-  if (trend === 'neutral' && !isHighVolatility) {
+  // === STRATEGY 3: ROTATE (Top N) ===
+  // Good for: Momentum trading, multi-coin portfolios
+  if (isHighVolatility && rsi > 45 && rsi < 75) {
     strategies.push({
-      name: 'Range Trading',
-      description: `Sideways market - buy near 30-day MA ($${(currentPrice * 0.97).toFixed(2)}), sell at recent highs ($${(currentPrice * 1.03).toFixed(2)})`,
-      risk: 'medium'
-    })
-  }
-  
-  // High conviction trend following (if strong bullish)
-  if (trend === 'bullish' && macdHist > 0 && rsi > 55 && rsi < 75) {
-    const stopLevel = (currentPrice * 0.92).toFixed(2)
-    strategies.push({
-      name: 'Trend Following',
-      description: `Strong bullish momentum - ride trend with 50-80% position, trailing stop at $${stopLevel} or 30-day MA`,
+      name: 'ROTATE Strategy',
+      description: `High volatility momentum - use ROTATE to shift into top 3-5 trending coins when ${coin.toUpperCase()} shows ≥8% 24h trend.`,
       risk: 'high'
     })
-  }
-  
-  // Bearish defensive strategy
-  if (trend === 'bearish' && rsi < 50) {
+  } else if (trend === 'bullish' && macdHist > 0 && rsi > 50) {
     strategies.push({
-      name: 'Defensive Positioning',
-      description: `Bearish trend with RSI ${rsi.toFixed(1)} - wait for RSI < 30 or 50-day MA support before entry`,
-      risk: 'low'
+      name: 'ROTATE Strategy',
+      description: `Strong momentum detected - use ROTATE to automatically shift into top performers when ${coin.toUpperCase()} leads with ≥5% 7-day trend.`,
+      risk: 'medium'
     })
   }
   
-  // Volatility breakout (if high volatility)
-  if (isHighVolatility && Math.abs(macdHist) > 0.5) {
-    strategies.push({
-      name: 'Volatility Breakout',
-      description: `High volatility (${(volatility/currentPrice * 100).toFixed(1)}%) - use 20-30% position with wide stops at ±8%`,
-      risk: 'high'
+  // Ensure we always return at least 2 strategies
+  if (strategies.length < 2) {
+    // Add a default REBALANCE if missing
+    if (!strategies.some(s => s.name.includes('REBALANCE'))) {
+      strategies.push({
+        name: 'REBALANCE Strategy',
+        description: `Maintain balanced ${coin.toUpperCase()} allocation - use REBALANCE to rebalance portfolio on 3-5% price movements.`,
+        risk: 'medium'
+      })
+    }
+  }
+  
+  // Return max 3 strategies
+  return strategies.slice(0, 3)
+}
+
+// Generate auto-pilot rule suggestions based on market conditions
+function generateRuleSuggestions(
+  coin: string,
+  indicators: Indicators,
+  currentPrice: number,
+  historicalData: OHLCV[]
+): Array<{
+  strategy: 'DCA' | 'REBALANCE' | 'ROTATE'
+  description: string
+  reasoning: string
+  trigger: {
+    type: 'price_drop_pct' | 'trend_pct' | 'momentum'
+    value: number
+    window?: '24h' | '7d' | '30d'
+    lookbackDays?: number
+  }
+  riskLevel: 'low' | 'medium' | 'high'
+  suggestedParams: {
+    maxSpendUSD: number
+    maxSlippage: number
+    cooldownMinutes: number
+    rotateTopN?: number
+  }
+}> {
+  const { rsi, macd, sma30, sma50, volatility } = indicators
+  const macdHist = macd.histogram
+  const suggestions: ReturnType<typeof generateRuleSuggestions> = []
+  
+  const trend = sma30 > sma50 ? 'bullish' : sma30 < sma50 ? 'bearish' : 'neutral'
+  const volatilityPct = (volatility / currentPrice) * 100
+  const isHighVolatility = volatilityPct > 5
+  const isLowVolatility = volatilityPct < 2
+  
+  // DCA Strategy - Good for any market condition (implements mean reversion)
+  if (rsi < 50) {
+    // Oversold or neutral - good for accumulation
+    const isMeanReversion = rsi < 35
+    suggestions.push({
+      strategy: 'DCA',
+      description: `DCA ${coin.toUpperCase()} on price dips${isMeanReversion ? ' (Mean Reversion opportunity)' : ''} - RSI at ${rsi.toFixed(1)} suggests accumulation opportunity`,
+      reasoning: `Market is ${rsi < 30 ? 'oversold' : 'neutral to bearish'}. DCA strategy reduces risk by buying at lower prices over time${isMeanReversion ? '. Mean reversion principle suggests price will recover to average levels.' : ''}.`,
+      trigger: {
+        type: 'price_drop_pct',
+        value: rsi < 30 ? 3 : 5 // More aggressive in oversold conditions
+      },
+      riskLevel: 'low',
+      suggestedParams: {
+        maxSpendUSD: 100,
+        maxSlippage: 0.5,
+        cooldownMinutes: rsi < 30 ? 30 : 60 // Faster accumulation when oversold
+      }
     })
   }
   
-  // FOMO warning (if very overbought)
-  if (rsi > 80) {
-    strategies.push({
-      name: 'FOMO Warning',
-      description: `⚠️ Extreme overbought (RSI ${rsi.toFixed(1)}) - AVOID new entries, consider hedging existing positions`,
-      risk: 'low'
+  // Rebalance Strategy - Based on trend
+  if (trend !== 'neutral' && !isHighVolatility) {
+    suggestions.push({
+      strategy: 'REBALANCE',
+      description: `Rebalance portfolio when ${coin.toUpperCase()} shows ${trend} momentum`,
+      reasoning: `${trend === 'bullish' ? 'Upward' : 'Downward'} trend detected (30-day MA ${trend === 'bullish' ? 'above' : 'below'} 50-day MA). Rebalancing captures trend momentum.`,
+      trigger: {
+        type: 'trend_pct',
+        value: trend === 'bullish' ? 3 : 5,
+        window: '7d'
+      },
+      riskLevel: 'medium',
+      suggestedParams: {
+        maxSpendUSD: 200,
+        maxSlippage: 0.5,
+        cooldownMinutes: 120
+      }
     })
   }
   
-  // Consolidation strategy (if very low volatility)
-  if (isLowVolatility && trend === 'neutral') {
-    strategies.push({
-      name: 'Accumulation Phase',
-      description: `Low volatility consolidation - ideal for building position, target 2-3x avg volume spike for breakout`,
-      risk: 'low'
+  // Momentum-based DCA
+  if (rsi > 50 && rsi < 70 && macdHist > 0) {
+    suggestions.push({
+      strategy: 'DCA',
+      description: `Momentum DCA for ${coin.toUpperCase()} - Ride the trend with controlled entries`,
+      reasoning: `RSI at ${rsi.toFixed(1)} with positive MACD indicates healthy upward momentum. DCA prevents FOMO while building position.`,
+      trigger: {
+        type: 'momentum',
+        value: 5,
+        lookbackDays: 7
+      },
+      riskLevel: 'medium',
+      suggestedParams: {
+        maxSpendUSD: 150,
+        maxSlippage: 0.8,
+        cooldownMinutes: 90
+      }
     })
   }
   
-  return strategies
+  // Rotate Strategy - For high volatility markets
+  if (isHighVolatility) {
+    suggestions.push({
+      strategy: 'ROTATE',
+      description: `Auto-rotate to top performers including ${coin.toUpperCase()} during high volatility`,
+      reasoning: `High volatility (${volatilityPct.toFixed(1)}%) creates opportunities. Rotation strategy captures momentum across multiple assets.`,
+      trigger: {
+        type: 'trend_pct',
+        value: 8,
+        window: '24h'
+      },
+      riskLevel: 'high',
+      suggestedParams: {
+        maxSpendUSD: 300,
+        maxSlippage: 1.0,
+        cooldownMinutes: 180,
+        rotateTopN: 3
+      }
+    })
+  }
+  
+  // Conservative Rebalance - For low volatility
+  if (isLowVolatility && trend === 'bullish') {
+    suggestions.push({
+      strategy: 'REBALANCE',
+      description: `Conservative rebalance with ${coin.toUpperCase()} - Low risk accumulation`,
+      reasoning: `Low volatility (${volatilityPct.toFixed(1)}%) in bullish trend offers steady accumulation with minimal risk.`,
+      trigger: {
+        type: 'trend_pct',
+        value: 2,
+        window: '30d'
+      },
+      riskLevel: 'low',
+      suggestedParams: {
+        maxSpendUSD: 250,
+        maxSlippage: 0.3,
+        cooldownMinutes: 240
+      }
+    })
+  }
+  
+  // Defensive DCA - For bearish markets
+  if (trend === 'bearish' && rsi < 40) {
+    suggestions.push({
+      strategy: 'DCA',
+      description: `Defensive DCA for ${coin.toUpperCase()} - Buy the dip with caution`,
+      reasoning: `Bearish trend with RSI ${rsi.toFixed(1)} - Small recurring purchases reduce downside risk while building position.`,
+      trigger: {
+        type: 'price_drop_pct',
+        value: 7 // Wait for larger drops in bear market
+      },
+      riskLevel: 'medium',
+      suggestedParams: {
+        maxSpendUSD: 75,
+        maxSlippage: 0.5,
+        cooldownMinutes: 180
+      }
+    })
+  }
+  
+  // Return top 3 most relevant suggestions
+  return suggestions.slice(0, 3)
 }
 
 // Generate charts

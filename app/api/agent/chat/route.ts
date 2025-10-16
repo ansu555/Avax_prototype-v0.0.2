@@ -9,6 +9,7 @@ import { analyzeCoin, mcpHealth } from "@/lib/mcp/analytics-client"
 import { resolveTokenBySymbol } from "@/lib/tokens"
 import { parseEther } from "viem"
 import { fetchHistoricalData, formatHistoricalDataForAI } from "@/lib/coingecko-history"
+import { formatTrigger } from "@/lib/shared/rules"
 
 export const runtime = "nodejs"
 
@@ -88,6 +89,10 @@ export async function POST(req: Request) {
     // === EARLY INTENT DETECTION (bypasses LLM for reliable data) ===
     const lastUserMsg = [...incoming].reverse().find(m => m.role === 'user')?.content || ''
     const text = lastUserMsg.toLowerCase().trim()
+    
+    // Auto-pilot rule suggestion intent
+    const ruleIntent = /(suggest|create|setup|build|make|generate|recommend).*?(rule|auto.*pilot|strategy|dca|rebalance)/i.test(lastUserMsg)
+    
     // MCP analytics intents: analyze, predict, strategy, chart requests
     const mcpIntent = /(analy[sz]e|analysis|prediction|predict|forecast|strategy|strategies|portfolio\s+strategy|chart|charts|graph|graphs)/i.test(lastUserMsg)
     // If user explicitly asks for analysis of a specific coin
@@ -153,24 +158,15 @@ export async function POST(req: Request) {
           parts.push(`Strategies:\n${s}`)
         }
         
-        // Fetch and embed SVG charts directly in chat
+        // Show overall analysis (comprehensive summary)
+        if (resp.overallAnalysis) {
+          parts.push(`\n**📋 Overall Analysis:**\n${resp.overallAnalysis}`)
+        }
+        
+        // Show chart links (Format 1 - clean and simple)
         if (resp.charts?.length) {
-          for (const chart of resp.charts) {
-            try {
-              // Fetch SVG content from MCP server
-              const svgResponse = await fetch(chart.url)
-              if (svgResponse.ok) {
-                const svgContent = await svgResponse.text()
-                // Embed SVG directly without wrapper div
-                parts.push(`\n**${chart.title}**\n${svgContent}`)
-              } else {
-                parts.push(`📊 ${chart.title}: [View Chart](${chart.url})`)
-              }
-            } catch (err) {
-              // Fallback to link if fetch fails
-              parts.push(`📊 ${chart.title}: [View Chart](${chart.url})`)
-            }
-          }
+          const c = resp.charts.map(x => `• ${x.title}: ${x.url}`).join('\n')
+          parts.push(`Charts:\n${c}`)
         }
         
         if (!parts.length) parts.push('No analysis available from MCP.')
@@ -178,6 +174,71 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, content: parts.join('\n\n'), threadId: config.configurable.thread_id })
       } catch (e: any) {
         return NextResponse.json({ ok: true, content: `❌ MCP request failed: ${e?.message || String(e)}`, threadId: config.configurable.thread_id })
+      }
+    }
+    
+    // === AUTO-PILOT RULE SUGGESTION ===
+    if (ruleIntent && mcpCoinMatch && isValidCoin) {
+      try {
+        const coinRaw = (mcpCoinMatch[1] || '').trim()
+        const coin = coinRaw.toLowerCase()
+        
+        const baseUrl = process.env.MCP_ANALYTICS_URL || 'http://localhost:8080'
+        const apiKey = process.env.MCP_ANALYTICS_API_KEY
+        
+        const response = await fetch(`${baseUrl}/suggest-rule`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
+          },
+          body: JSON.stringify({ coin, horizonDays: 30 })
+        })
+        
+        if (!response.ok) {
+          return NextResponse.json({ 
+            ok: true, 
+            content: `❌ Failed to generate rule suggestions for ${coin.toUpperCase()}`, 
+            threadId: config.configurable.thread_id 
+          })
+        }
+        
+        const data = await response.json()
+        
+        if (data.ok && data.suggestions?.length) {
+          const parts: string[] = []
+          parts.push(`🤖 **Auto-Pilot Rule Suggestions for ${coin.toUpperCase()}**\n`)
+          
+          data.suggestions.forEach((sug: any, idx: number) => {
+            parts.push(`\n**${idx + 1}. ${sug.strategy} Strategy** (${sug.riskLevel} risk)`)
+            parts.push(`📋 ${sug.description}`)
+            parts.push(`💡 ${sug.reasoning}`)
+            parts.push(`\n**Trigger:** ${formatTrigger(sug.trigger)}`)
+            parts.push(`**Suggested Settings:**`)
+            parts.push(`• Max Spend: $${sug.suggestedParams.maxSpendUSD}`)
+            parts.push(`• Max Slippage: ${sug.suggestedParams.maxSlippage}%`)
+            parts.push(`• Cooldown: ${sug.suggestedParams.cooldownMinutes} minutes`)
+            if (sug.suggestedParams.rotateTopN) {
+              parts.push(`• Rotate Top: ${sug.suggestedParams.rotateTopN} coins`)
+            }
+          })
+          
+          parts.push(`\n\n💡 **To create a rule:** Click "Auto-Pilot Portfolio" in the header or "Add to Auto-Pilot" on the coin page.`)
+          
+          return NextResponse.json({ ok: true, content: parts.join('\n'), threadId: config.configurable.thread_id })
+        }
+        
+        return NextResponse.json({ 
+          ok: true, 
+          content: `No rule suggestions available for ${coin.toUpperCase()} at this time.`, 
+          threadId: config.configurable.thread_id 
+        })
+      } catch (e: any) {
+        return NextResponse.json({ 
+          ok: true, 
+          content: `❌ Rule suggestion failed: ${e?.message || String(e)}`, 
+          threadId: config.configurable.thread_id 
+        })
       }
     }
 
