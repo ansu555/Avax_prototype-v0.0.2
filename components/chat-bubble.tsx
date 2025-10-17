@@ -58,6 +58,53 @@ export default function ChatBubble({ variant = "floating", align = "right" }: Ch
   const nativeSymbol = 'AVAX'
 
   const renderContent = (text: string) => {
+    // Check if content contains SVG
+    if (text.includes('<svg')) {
+      const parts: React.ReactNode[] = []
+      let lastIndex = 0
+      
+      // Match SVG blocks with improved regex
+      const svgRegex = /(<\?xml[^>]*>\s*)?<svg[\s\S]*?<\/svg>/g
+      let match: RegExpExecArray | null
+      
+      while ((match = svgRegex.exec(text)) !== null) {
+        // Add text before the SVG block
+        if (match.index > lastIndex) {
+          const beforeText = text.slice(lastIndex, match.index)
+          // Preserve whitespace for non-SVG text
+          parts.push(<span key={`text-${lastIndex}`} style={{ whiteSpace: 'pre-wrap' }}>{beforeText}</span>)
+        }
+        
+        // Add the SVG block with styling
+        const svgContent = match[0]
+        parts.push(
+          <div 
+            key={`svg-${match.index}`} 
+            style={{ 
+              background: '#1a1a1a', 
+              padding: '10px', 
+              borderRadius: '8px', 
+              margin: '10px 0',
+              overflow: 'auto',
+              maxWidth: '100%'
+            }}
+            dangerouslySetInnerHTML={{ __html: svgContent }} 
+          />
+        )
+        
+        lastIndex = match.index + match[0].length
+      }
+      
+      // Add remaining text
+      if (lastIndex < text.length) {
+        const remainingText = text.slice(lastIndex)
+        parts.push(<span key={`text-${lastIndex}`} style={{ whiteSpace: 'pre-wrap' }}>{remainingText}</span>)
+      }
+      
+      if (parts.length > 0) return parts
+    }
+    
+    // Original logic for transaction hashes and addresses
     const re = /(0x[a-fA-F0-9]{64})|(0x[a-fA-F0-9]{40})/g
     const out: React.ReactNode[] = []
     let lastIndex = 0
@@ -240,8 +287,9 @@ export default function ChatBubble({ variant = "floating", align = "right" }: Ch
                           ? "max-w-full rounded-2xl bg-gradient-to-br from-red-500 to-red-600 px-3 py-2 text-sm text-white shadow-md dark:from-[#F3C623] dark:to-[#D9A800]"
                           : "max-w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow dark:border-white/10 dark:bg-white/5 dark:text-slate-100"
                       }
+                      style={{ whiteSpace: 'pre-wrap' }}
                     >
-                      <div className="whitespace-pre-wrap break-words">{renderContent(m.content)}</div>
+                      <div className="break-words overflow-auto">{renderContent(m.content)}</div>
                     </div>
                   </div>
                 </div>

@@ -5,8 +5,11 @@ import { HumanMessage, AIMessage, SystemMessage, ToolMessage, BaseMessage } from
 import { MemorySaver } from "@langchain/langgraph"
 import { createReactAgent } from "@langchain/langgraph/prebuilt"
 import { getAgent } from "@/lib/agent"
+import { analyzeCoin, mcpHealth } from "@/lib/mcp/analytics-client"
 import { resolveTokenBySymbol } from "@/lib/tokens"
-import { parseEther } from "viem"
+import { parseEther, type Address } from "viem"
+import { fetchHistoricalData, formatHistoricalDataForAI } from "@/lib/coingecko-history"
+import { formatTrigger } from "@/lib/shared/rules"
 
 export const runtime = "nodejs"
 
@@ -86,6 +89,339 @@ export async function POST(req: Request) {
     // === EARLY INTENT DETECTION (bypasses LLM for reliable data) ===
     const lastUserMsg = [...incoming].reverse().find(m => m.role === 'user')?.content || ''
     const text = lastUserMsg.toLowerCase().trim()
+    
+    // Auto-pilot rule suggestion intent
+    const ruleIntent = /(suggest|create|setup|build|make|generate|recommend).*?(rule|auto.*pilot|strategy|dca|rebalance)/i.test(lastUserMsg)
+    
+    // Address query intent (bypass agent for instant response)
+    const addressIntent = /\b(what.{0,20}(is|s).{0,20}(my|the).{0,20}(address|wallet)|my.{0,10}address|my.{0,10}wallet|show.{0,10}address|get.{0,10}address)\b/i.test(lastUserMsg)
+    
+    if (addressIntent) {
+      try {
+        const { getAddress, getEOAAddress } = await getAgent(chainOverride)
+        const smart = await getAddress()
+        const eoa = await getEOAAddress()
+        const clientEOA = (body.walletAddress && /^0x[a-fA-F0-9]{40}$/.test(body.walletAddress)) ? body.walletAddress : undefined
+        
+        let response = '🔑 **Your Wallet Addresses:**\n\n'
+        
+        // Smart Account (primary for gasless operations)
+        response += `**Smart Account** (Gasless):\n\`${smart}\`\n\n`
+        
+        // Server EOA (agent's private key)
+        response += `**Server EOA** (Agent Key):\n\`${eoa}\`\n\n`
+        
+        // Connected EOA (if provided from frontend)
+        if (clientEOA) {
+          response += `**Connected Wallet** (Your Browser):\n\`${clientEOA}\`\n\n`
+        }
+        
+        response += '💡 *Use the Smart Account address for gasless transactions and receiving funds.*'
+        
+        if (smart.toLowerCase() === eoa.toLowerCase()) {
+          response += '\n\n⚠️ *Note: Smart account shows EOA as fallback. Fund the EOA to deploy your smart account.*'
+        }
+        
+        return NextResponse.json({ 
+          ok: true, 
+          content: response,
+          threadId: config.configurable.thread_id 
+        })
+      } catch (e: any) {
+        return NextResponse.json({ 
+          ok: true, 
+          content: `❌ Failed to retrieve addresses: ${e?.message || String(e)}`,
+          threadId: config.configurable.thread_id 
+        })
+      }
+    }
+    
+    // Balance query intent (bypass agent for instant response)
+    const balanceIntent = /\b(what.{0,20}(is|s).{0,20}(my|the).{0,20}balance|my.{0,10}balance|show.{0,10}balance|get.{0,10}balance|check.{0,10}balance|balances?)\b/i.test(lastUserMsg)
+    
+    if (balanceIntent) {
+      try {
+        const { getAddress, getBalance } = await getAgent(chainOverride)
+        const addr = await getAddress()
+        const chainId = body.chainId || chainOverride || 43113
+        
+        // Check if specific token mentioned
+        const tokenMatch = lastUserMsg.match(/\b(USDC|USDT|DAI|WETH|WBTC|WAVAX|ETH|BTC|AVAX)\b/i)
+        const tokenSymbol = tokenMatch?.[1]?.toUpperCase()
+        
+        if (tokenSymbol && tokenSymbol !== 'AVAX') {
+          // Get specific token balance
+          const token = resolveTokenBySymbol(tokenSymbol, chainId)
+          if (!token) {
+            return NextResponse.json({ 
+              ok: true, 
+              content: `❌ Token ${tokenSymbol} not found on this chain.`,
+              threadId: config.configurable.thread_id 
+            })
+          }
+          
+          const balance = await getBalance(token.address as Address, addr)
+          const balNum = parseFloat(balance)
+          const formattedBal = balNum >= 1 ? balNum.toFixed(4) : balNum.toExponential(4)
+          
+          return NextResponse.json({ 
+            ok: true, 
+            content: `💰 **${tokenSymbol} Balance:**\n\`${formattedBal} ${tokenSymbol}\`\n\n📍 Account: \`${addr}\``,
+            threadId: config.configurable.thread_id 
+          })
+        } else {
+          // Get native AVAX balance
+          const nativeBalance = await getBalance(undefined, addr)
+          const balNum = parseFloat(nativeBalance)
+          const formattedBal = balNum.toFixed(4)
+          
+          let response = `💰 **Your Balances:**\n\n`
+          response += `**Native Token (AVAX):**\n\`${formattedBal} AVAX\`\n\n`
+          response += `📍 Account: \`${addr}\``
+          
+          if (balNum === 0) {
+            response += '\n\n💡 *Fund your account to start making transactions.*'
+            if (chainId === 43113) {
+              response += '\n🚰 Get testnet AVAX: https://faucet.avax.network/'
+            }
+          }
+          
+          return NextResponse.json({ 
+            ok: true, 
+            content: response,
+            threadId: config.configurable.thread_id 
+          })
+        }
+      } catch (e: any) {
+        return NextResponse.json({ 
+          ok: true, 
+          content: `❌ Failed to retrieve balance: ${e?.message || String(e)}`,
+          threadId: config.configurable.thread_id 
+        })
+      }
+    }
+    
+    // MCP analytics intents: analyze, predict, strategy, chart requests
+    const mcpIntent = /(analy[sz]e|analysis|prediction|predict|forecast|strategy|strategies|portfolio\s+strategy|chart|charts|graph|graphs)/i.test(lastUserMsg)
+    // If user explicitly asks for analysis of a specific coin
+    // Improved pattern: matches "analyze bitcoin", "bitcoin analysis", "forecast for eth", etc.
+    const mcpCoinMatch = 
+      lastUserMsg.match(/(?:analy[sz]e|predict|forecast|strategy|chart)\s+([a-z0-9\-]{2,40})/i) ||  // "analyze bitcoin"
+      lastUserMsg.match(/(?:of|for|on|about)\s+([a-z0-9\-]{2,40})/i) ||                               // "analysis of bitcoin"
+      lastUserMsg.match(/\b([A-Za-z]{2,10})\b\s+(?:analysis|forecast|prediction|strategy)/i)          // "bitcoin analysis"
+    
+    // Filter out common words that aren't coins
+    const blacklistedWords = ['previous', 'next', 'last', 'first', 'current', 'latest', 'recent', 'today', 'yesterday', 'tomorrow', 'this', 'that', 'these', 'those', 'same', 'other', 'another', 'some', 'any', 'all', 'each', 'every', 'both', 'few', 'many', 'more', 'most', 'several', 'such']
+    const coinName = mcpCoinMatch?.[1]?.toLowerCase()
+    const isValidCoin = coinName && !blacklistedWords.includes(coinName)
+    
+    if (mcpIntent && mcpCoinMatch && isValidCoin) {
+      try {
+        // Basic health check first (non-fatal if it fails, we continue and surface error)
+        const health = await mcpHealth()
+        const coinRaw = (mcpCoinMatch[1] || '').trim()
+        const coin = coinRaw.toLowerCase()
+        const horizonMatch = lastUserMsg.match(/(?:next|over|for)\s+(\d{1,3})\s*(?:days?|d)/i)
+        const horizonDays = horizonMatch ? Math.min(365, Math.max(1, parseInt(horizonMatch[1], 10))) : 30
+        const granularity: '1h' | '4h' | '1d' = /\b1h\b/i.test(lastUserMsg) ? '1h' : /\b4h\b/i.test(lastUserMsg) ? '4h' : '1d'
+
+        // Detect chart type from user message
+        let chartType: 'line' | 'bar' | 'candlestick' | 'area' = 'line'
+        if (/\b(bar|bars|bar\s+chart)\b/i.test(lastUserMsg)) chartType = 'bar'
+        else if (/\b(candlestick|candle|ohlc)\b/i.test(lastUserMsg)) chartType = 'candlestick'
+        else if (/\b(area|area\s+chart)\b/i.test(lastUserMsg)) chartType = 'area'
+        else if (/\b(line|linear|line\s+chart|linear\s+graph)\b/i.test(lastUserMsg)) chartType = 'line'
+
+        // Fetch historical data for context (1 year by default)
+        const historicalContext = await fetchHistoricalData(coin, 365, false).catch(() => null)
+
+        const resp = await analyzeCoin({ coin, horizonDays, granularity, chartType, tasks: ['analysis', 'prediction', 'strategy', 'charts'] })
+        if (!resp.ok) {
+          return NextResponse.json({ ok: true, content: `❌ MCP error: ${resp.error || 'Unknown error'}${health.ok ? '' : `\nHealth: ${health.message || 'unreachable'}`}` , threadId: config.configurable.thread_id })
+        }
+
+        // Format a concise response for chat
+        const parts: string[] = []
+        
+        // Add methodology explanation first (transparency)
+        if (resp.methodology) {
+          const m = resp.methodology
+          parts.push(`🔍 **Prediction Methodology**\n📊 Analyzed: ${m.dataPoints} data points over ${m.timeframe}\n🧮 Method: ${m.method}\n📈 Indicators: ${m.indicators.join(', ')}\n🎯 Confidence: ${m.confidenceFactors}`)
+        }
+        
+        // Add historical context if available
+        if (historicalContext?.ok && historicalContext.statistics) {
+          const stats = historicalContext.statistics
+          parts.push(`📊 **${coin.toUpperCase()} - 1 Year Overview**\n💰 Current: $${stats.currentPrice.toFixed(6)} | 📈 High: $${stats.highestPrice.toFixed(6)} | 📉 Low: $${stats.lowestPrice.toFixed(6)}\n📊 Change: ${stats.priceChangePercent >= 0 ? '+' : ''}${stats.priceChangePercent.toFixed(2)}% | Volatility: ${stats.volatility.toFixed(2)}%`)
+        }
+        
+        if (resp.summary) parts.push(`📊 ${resp.summary}`)
+        if (resp.insights?.length) parts.push(`Insights:\n- ${resp.insights.slice(0, 5).join('\n- ')}`)
+        if (resp.predictions?.length) {
+          const next3 = resp.predictions.slice(0, 3).map(p => `• ${p.date}: $${Number(p.price).toFixed(4)}${p.probability ? ` (${Math.round((p.probability || 0) * 100)}%)` : ''}`).join('\n')
+          parts.push(`Forecast (next):\n${next3}`)
+        }
+        if (resp.strategies?.length) {
+          const s = resp.strategies.slice(0, 2).map(x => `• ${x.name} (${x.risk}) — ${x.description}`).join('\n')
+          parts.push(`Strategies:\n${s}`)
+        }
+        
+        // Show overall analysis (comprehensive summary)
+        if (resp.overallAnalysis) {
+          parts.push(`\n**📋 Overall Analysis:**\n${resp.overallAnalysis}`)
+        }
+        
+        // Show chart links (Format 1 - clean and simple)
+        if (resp.charts?.length) {
+          const c = resp.charts.map(x => `• ${x.title}: ${x.url}`).join('\n')
+          parts.push(`Charts:\n${c}`)
+        }
+        
+        if (!parts.length) parts.push('No analysis available from MCP.')
+
+        return NextResponse.json({ ok: true, content: parts.join('\n\n'), threadId: config.configurable.thread_id })
+      } catch (e: any) {
+        return NextResponse.json({ ok: true, content: `❌ MCP request failed: ${e?.message || String(e)}`, threadId: config.configurable.thread_id })
+      }
+    }
+    
+    // === AUTO-PILOT RULE SUGGESTION ===
+    if (ruleIntent && mcpCoinMatch && isValidCoin) {
+      try {
+        const coinRaw = (mcpCoinMatch[1] || '').trim()
+        const coin = coinRaw.toLowerCase()
+        
+        const baseUrl = process.env.MCP_ANALYTICS_URL || 'http://localhost:8080'
+        const apiKey = process.env.MCP_ANALYTICS_API_KEY
+        
+        const response = await fetch(`${baseUrl}/suggest-rule`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
+          },
+          body: JSON.stringify({ coin, horizonDays: 30 })
+        })
+        
+        if (!response.ok) {
+          return NextResponse.json({ 
+            ok: true, 
+            content: `❌ Failed to generate rule suggestions for ${coin.toUpperCase()}`, 
+            threadId: config.configurable.thread_id 
+          })
+        }
+        
+        const data = await response.json()
+        
+        if (data.ok && data.suggestions?.length) {
+          const parts: string[] = []
+          parts.push(`🤖 **Auto-Pilot Rule Suggestions for ${coin.toUpperCase()}**\n`)
+          
+          data.suggestions.forEach((sug: any, idx: number) => {
+            parts.push(`\n**${idx + 1}. ${sug.strategy} Strategy** (${sug.riskLevel} risk)`)
+            parts.push(`📋 ${sug.description}`)
+            parts.push(`💡 ${sug.reasoning}`)
+            parts.push(`\n**Trigger:** ${formatTrigger(sug.trigger)}`)
+            parts.push(`**Suggested Settings:**`)
+            parts.push(`• Max Spend: $${sug.suggestedParams.maxSpendUSD}`)
+            parts.push(`• Max Slippage: ${sug.suggestedParams.maxSlippage}%`)
+            parts.push(`• Cooldown: ${sug.suggestedParams.cooldownMinutes} minutes`)
+            if (sug.suggestedParams.rotateTopN) {
+              parts.push(`• Rotate Top: ${sug.suggestedParams.rotateTopN} coins`)
+            }
+          })
+          
+          parts.push(`\n\n💡 **To create a rule:** Click "Auto-Pilot Portfolio" in the header or "Add to Auto-Pilot" on the coin page.`)
+          
+          return NextResponse.json({ ok: true, content: parts.join('\n'), threadId: config.configurable.thread_id })
+        }
+        
+        return NextResponse.json({ 
+          ok: true, 
+          content: `No rule suggestions available for ${coin.toUpperCase()} at this time.`, 
+          threadId: config.configurable.thread_id 
+        })
+      } catch (e: any) {
+        return NextResponse.json({ 
+          ok: true, 
+          content: `❌ Rule suggestion failed: ${e?.message || String(e)}`, 
+          threadId: config.configurable.thread_id 
+        })
+      }
+    }
+
+    // === HISTORICAL DATA DETECTION ===
+    // Detect requests for historical price data: "bitcoin history", "1 year data for eth", "price history of avax"
+    const historyIntent = /(history|historical|past\s+(?:price|data)|(?:price|data)\s+history|year\s+(?:old|data)|month\s+(?:old|data)|since)/i.test(lastUserMsg)
+    const historyMatch = 
+      lastUserMsg.match(/(?:history|historical|past|data)\s+(?:of|for|on)?\s*([a-z0-9\-]{2,40})/i) ||  // "history of bitcoin"
+      lastUserMsg.match(/([a-z0-9\-]{2,40})\s+(?:history|historical|past\s+data|price\s+history)/i) ||  // "bitcoin history"
+      lastUserMsg.match(/(\d+)\s+(?:year|month|day)s?\s+(?:of|for)?\s*([a-z0-9\-]{2,40})/i)            // "1 year bitcoin"
+    
+    if (historyIntent && historyMatch) {
+      try {
+        // Extract coin name and time period
+        let coin = historyMatch[2] || historyMatch[1] || ''
+        coin = coin.toLowerCase().trim()
+        
+        // Skip if blacklisted word
+        if (!blacklistedWords.includes(coin)) {
+          // Extract days parameter
+          let days: number | 'max' = 365 // default 1 year
+          
+          // Check for specific time periods
+          const yearMatch = lastUserMsg.match(/(\d+)\s*years?/i)
+          const monthMatch = lastUserMsg.match(/(\d+)\s*months?/i)
+          const dayMatch = lastUserMsg.match(/(\d+)\s*days?/i)
+          const maxMatch = /\b(all|max|maximum|complete|full|entire)\b/i.test(lastUserMsg)
+          
+          if (maxMatch) {
+            days = 'max'
+          } else if (yearMatch) {
+            days = Math.min(365, parseInt(yearMatch[1]) * 365)
+          } else if (monthMatch) {
+            days = Math.min(365, parseInt(monthMatch[1]) * 30)
+          } else if (dayMatch) {
+            days = Math.min(365, parseInt(dayMatch[1]))
+          }
+          
+          // Fetch historical data
+          const histData = await fetchHistoricalData(coin, days, true)
+          
+          if (histData.ok && histData.statistics) {
+            // Format comprehensive response
+            const response = formatHistoricalDataForAI(histData)
+            
+            // Add trend analysis
+            const trend = histData.statistics.priceChangePercent > 0 ? '📈 Upward trend' : '📉 Downward trend'
+            const volatilityLevel = histData.statistics.volatility > 10 ? 'High' : histData.statistics.volatility > 5 ? 'Medium' : 'Low'
+            
+            const enhancedResponse = `${response}\n\n**Analysis:**\n${trend}\nVolatility Level: ${volatilityLevel}\nData Period: ${days === 'max' ? 'Maximum available' : `${days} days`}\n\n💡 *This data can be used for technical analysis, trend prediction, and investment decisions.*`
+            
+            return NextResponse.json({
+              ok: true,
+              content: enhancedResponse,
+              threadId: config.configurable.thread_id,
+              metadata: {
+                type: 'historical_data',
+                coin,
+                days,
+                dataPoints: histData.dataPoints
+              }
+            })
+          } else {
+            return NextResponse.json({
+              ok: true,
+              content: `❌ Could not fetch historical data for ${coin}. ${histData.error || 'Please check the coin name and try again.'}`,
+              threadId: config.configurable.thread_id
+            })
+          }
+        }
+      } catch (e: any) {
+        // Continue to other handlers if historical data fails
+        console.error('Historical data error:', e)
+      }
+    }
     
     // Top coins with dynamic count - "top 5 coins", "show me 15 cryptocurrencies", etc.
     let topCoinsMatch = text.match(/top\s+(\d+)\s+(?:coin|crypto|cryptocurrency|token)/i)
@@ -225,12 +561,17 @@ export async function POST(req: Request) {
     if (/\b(smart\s+(?:account\s+)?balance|smart\s+account)\b/i.test(text)) {
       try {
         const smartAddress = await getSmartAddressOrNull()
+        const eoaAddress = await getEOAAddress()
         const chainId = Number(process.env.CHAIN_ID || 43113)
         
         if (!smartAddress) {
+          // Smart account not deployed - check EOA balance instead
+          const avaxBalance = await publicClient.getBalance({ address: eoaAddress })
+          const avaxFormatted = Number(avaxBalance) / 1e18
+          
           return NextResponse.json({
             ok: true,
-            content: `❌ **Smart Account Not Available**\n\nNo smart account address found. The smart account may not be deployed yet or there might be a configuration issue.\n\nTry using regular balance commands for your EOA instead.`,
+            content: `🏦 **Smart Account Status: Not Deployed**\n\n⚠️ Your smart account will be deployed on your first gasless transaction.\n\n**EOA Balance (Current):**\n💰 \`${avaxFormatted.toFixed(4)} AVAX\`\n\n📍 Address: \`${eoaAddress}\`\n\n💡 **Note:** Your EOA balance will be used until the smart account is deployed. After deployment, the smart account will have its own separate balance.\n\n🚰 Need more testnet AVAX? Visit: https://faucet.avax.network/`,
             threadId: config.configurable.thread_id
           })
         }
@@ -273,7 +614,7 @@ export async function POST(req: Request) {
         
         return NextResponse.json({
           ok: true,
-          content: `🏦 **Smart Account Balance** (Avalanche ${chainId === 43114 ? 'Mainnet' : 'Fuji'})\n\nSmart Account: ${smartAddress}\n\nAVAX: ${avaxFormatted.toFixed(4)}${tokenBalances}`,
+          content: `🏦 **Smart Account Balance** (Avalanche ${chainId === 43114 ? 'Mainnet' : 'Fuji'})\n\n✅ Smart Account Deployed\n\n💰 **AVAX:** \`${avaxFormatted.toFixed(4)}\`${tokenBalances}\n\n📍 Smart Account: \`${smartAddress}\``,
           threadId: config.configurable.thread_id
         })
       } catch (error) {
@@ -294,16 +635,17 @@ export async function POST(req: Request) {
         const networkName = chainId === 43114 ? 'Avalanche Mainnet' : 'Avalanche Fuji testnet'
         
         if (!smartAddress) {
+          // Smart account not deployed - provide clear guidance
           return NextResponse.json({
             ok: true,
-            content: `🏦 **Smart Account Status**\n\n❌ No smart account available\n\nThe smart account may not be deployed yet. You can use your EOA instead:\n\n📱 **Your EOA**: ${eoaAddress}`,
+            content: `🏦 **Smart Account Status**\n\n⚠️ **Not Deployed Yet**\n\nYour smart account is not deployed on ${networkName}. It will be automatically deployed on your first gasless transaction.\n\n**Your EOA Address:**\n\`${eoaAddress}\`\n\n**Current Balance:** Check with "get my balance"\n\n💡 **How to Deploy:**\n• Make any gasless transaction (transfer/swap)\n• The smart account will deploy automatically\n• You can use your EOA for now - it has the same address as your future smart account\n\n� **Need testnet AVAX?** Visit: https://faucet.avax.network/`,
             threadId: config.configurable.thread_id
           })
         }
         
         return NextResponse.json({
           ok: true,
-          content: `🏦 **Smart Account Address**\n\n${smartAddress}\n\n📱 **Your EOA**: ${eoaAddress}\n\n*Both on ${networkName}*`,
+          content: `🏦 **Smart Account Address**\n\n\`${smartAddress}\`\n\n📱 **Your EOA**: \`${eoaAddress}\`\n\n✅ Smart account is deployed on ${networkName}`,
           threadId: config.configurable.thread_id
         })
       } catch (error) {

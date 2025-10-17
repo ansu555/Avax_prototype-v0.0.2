@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+  <svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
+    <rect x="0" y="0" width="800" height="400" fill="#1a1a1a" />
+    <line x1="60" y1="40.00" x2="780" y2="40.00" stroke="#333" stroke-width="1" />
+<line x1="60" y1="104.00" x2="780" y2="104.00" stroke="#333" stroke-width="1" />
+<line x1="60" y1="168.00" x2="780" y2="168.00" stroke="#333" stroke-width="1" />
+<line x1="60" y1="232.00" x2="780" y2="232.00" stroke="#333" stroke-width="1" />
+<line x1="60" y1="296.00" x2="780" y2="296.00" stroke="#333" stroke-width="1" />
+<line x1="60" y1="360.00" x2="780" y2="360.00" stroke="#333" stroke-width="1" />
+    <polygon points="660.00,237.77 680.00,189.53 700.00,229.75 720.00,269.85 740.00,244.59 760.00,190.73 780.00,234.38 780.00,366.54 760.00,327.05 740.00,375.78 720.00,398.63 700.00,362.35 680.00,325.96 660.00,369.61" fill="rgba(0,150,255,0.1)" />
+    <polyline fill="none" stroke="#00ff88" stroke-width="2" points="60.00,88.69 80.00,94.49 100.00,100.02 120.00,84.65 140.00,96.28 160.00,102.44 180.00,90.30 200.00,74.43 220.00,71.02 240.00,74.36 260.00,85.32 280.00,96.19 300.00,135.88 320.00,140.39 340.00,146.57 360.00,152.18 380.00,169.46 400.00,174.06 420.00,163.80 440.00,171.15 460.00,160.31 480.00,154.25 500.00,157.24 520.00,159.88 540.00,160.11 560.00,174.69 580.00,185.65 600.00,230.12 620.00,266.43 640.00,281.24" />
+    <polyline fill="none" stroke="#0088ff" stroke-dasharray="5,5" stroke-width="2" points="660.00,303.69 680.00,257.74 700.00,296.05 720.00,334.24 740.00,310.19 760.00,258.89 780.00,300.46" />
+    <text x="400" y="25" fill="#fff" font-size="14" text-anchor="middle">Price Forecast</text>
+    <text x="50" y="364.00" fill="#fff" font-size="12" text-anchor="end">$18.09</text>
+<text x="50" y="300.00" fill="#fff" font-size="12" text-anchor="end">$19.01</text>
+<text x="50" y="236.00" fill="#fff" font-size="12" text-anchor="end">$19.93</text>
+<text x="50" y="172.00" fill="#fff" font-size="12" text-anchor="end">$20.85</text>
+<text x="50" y="108.00" fill="#fff" font-size="12" text-anchor="end">$21.76</text>
+<text x="50" y="44.00" fill="#fff" font-size="12" text-anchor="end">$22.68</text>
+    
+    <text x="630" y="50" fill="#00ff88" font-size="12">● Historical</text>
+    <text x="630" y="70" fill="#0088ff" font-size="12">● Forecast</text>
+  
+  </svg>

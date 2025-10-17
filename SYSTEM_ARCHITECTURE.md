@@ -626,6 +626,154 @@ interface MonitoringMetrics {
 
 ---
 
+## MCP Analytics Server Integration
+
+The platform includes a dedicated **MCP (Market Context Protocol) Analytics Server** for advanced crypto market analysis, predictions, and strategy generation.
+
+### Architecture
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Chat Agent    │────►│  Next.js Proxy  │────►│  MCP Server     │
+│   (LangChain)   │     │  /api/mcp/*     │     │  (Express:8080) │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+         │                       │                       │
+         │                       │                       ▼
+         │                       │              ┌─────────────────┐
+         │                       │              │  Analysis       │
+         │                       │              │  - Technical    │
+         │                       │              │  - Predictions  │
+         │                       │              │  - Strategies   │
+         │                       │              │  - Charts       │
+         │                       │              └─────────────────┘
+         ▼                       ▼
+   User receives           Response with
+   formatted analysis      charts & insights
+```
+
+### Components
+
+#### 1. MCP Server (`mcp_server/main.ts`)
+- **Technology**: Express.js + TypeScript
+- **Port**: 8080 (configurable)
+- **Authentication**: Bearer token (optional)
+- **Endpoints**:
+  - `GET /health` - Health check
+  - `POST /analyze` - Analyze coin with predictions and strategies
+  - `GET /charts/:id.svg` - Serve generated charts
+
+#### 2. Next.js Proxy (`app/api/mcp/`)
+- **Routes**:
+  - `POST /api/mcp/analyze` - Proxy to MCP server
+  - `GET /api/mcp/health` - Check MCP availability
+- **Purpose**: Server-side proxy to avoid CORS issues and secure API keys
+
+#### 3. MCP Client Library (`lib/mcp/`)
+- `client.ts` - Type-safe MCP API client
+- `analytics-client.ts` - Server-side utilities for direct MCP calls
+- Intent detection and coin extraction utilities
+
+### Features
+
+#### Technical Analysis
+```typescript
+interface Indicators {
+  sma30: number          // 30-day Simple Moving Average
+  sma50: number          // 50-day Simple Moving Average  
+  rsi: number            // Relative Strength Index
+  macd: {                // Moving Average Convergence Divergence
+    value: number
+    signal: number
+    histogram: number
+  }
+  volatility: number     // Standard deviation
+  trend: 'bullish' | 'bearish' | 'neutral'
+}
+```
+
+#### Price Predictions
+- **Horizon**: Up to 7 days
+- **Method**: Linear regression + volatility adjustment
+- **Output**: Daily price predictions with confidence scores
+
+#### Trading Strategies
+- **DCA (Dollar Cost Averaging)**: Low-risk systematic accumulation
+- **Momentum Trading**: Entry on confirmed trends
+- **Mean Reversion**: Buy oversold, sell overbought
+- **Trend Following**: Ride strong directional moves
+
+#### Chart Generation
+- **Format**: SVG (scalable, lightweight)
+- **Types**:
+  - Price history with moving averages
+  - Forecast with confidence bands
+- **Storage**: Temporary files in `mcp_server/charts/`
+
+### Integration with Chat Agent
+
+The chat agent automatically detects analysis requests and routes them to MCP:
+
+```typescript
+// app/api/agent/chat/route.ts
+const mcpIntent = /(analy[sz]e|prediction|predict|forecast|strategy)/i.test(message)
+const coinMatch = message.match(/(?:of|for|on|about)\s+([a-z0-9\-]{2,40})/i)
+
+if (mcpIntent && coinMatch) {
+  const resp = await analyzeCoin({ 
+    coin: coinMatch[1], 
+    horizonDays: 30,
+    tasks: ['analysis', 'prediction', 'strategy', 'charts']
+  })
+  // Format and return results
+}
+```
+
+**Example User Queries:**
+- "Analyze Bitcoin"
+- "Give me a 30-day forecast for ETH"
+- "What's the trading strategy for AVAX?"
+- "Show me charts for SOL"
+
+### Environment Configuration
+
+```env
+# MCP Server Configuration
+MCP_PORT=8080
+MCP_BASE_URL=http://localhost:8080
+MCP_ANALYTICS_API_KEY=your-secret-key
+
+# Next.js Integration
+MCP_ANALYTICS_URL=http://localhost:8080
+```
+
+### Data Flow
+
+1. **User sends message** → Chat agent detects analysis intent
+2. **Agent calls** `/api/mcp/analyze` → Proxy forwards to MCP server
+3. **MCP fetches data** → Generates indicators, predictions, strategies
+4. **MCP renders charts** → Saves SVG files, returns URLs
+5. **Proxy returns response** → Agent formats for chat display
+6. **User sees analysis** → Summary, insights, predictions, strategies, charts
+
+### Security
+
+- **API Key Authentication**: Optional bearer token protection
+- **Server-side Proxy**: MCP credentials never exposed to client
+- **Input Validation**: Sanitize coin symbols and parameters
+- **Rate Limiting**: Recommended for production deployment
+
+### Future Enhancements
+
+- [ ] Real historical data integration (CoinGecko, CoinMarketCap)
+- [ ] Advanced ML models (Prophet, LSTM, ensemble methods)
+- [ ] Database caching for analysis results
+- [ ] Portfolio simulation and backtesting
+- [ ] WebSocket support for real-time updates
+- [ ] Custom indicator configuration
+- [ ] Multi-coin correlation analysis
+
+---
+
 ## Conclusion
 
 The 10xSwap backend architecture provides a robust, scalable foundation for multi-chain DeFi operations with AI-powered automation. Key architectural strengths include:
@@ -635,5 +783,6 @@ The 10xSwap backend architecture provides a robust, scalable foundation for mult
 - **Comprehensive error handling** and fallback systems
 - **Flexible caching strategy** for optimal performance
 - **Security-first approach** with multiple validation layers
+- **MCP Analytics integration** for advanced market intelligence
 
 The system is designed to scale with additional chains, enhanced AI capabilities, and growing user demand while maintaining reliability and security standards.
