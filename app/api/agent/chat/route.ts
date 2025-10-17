@@ -7,7 +7,7 @@ import { createReactAgent } from "@langchain/langgraph/prebuilt"
 import { getAgent } from "@/lib/agent"
 import { analyzeCoin, mcpHealth } from "@/lib/mcp/analytics-client"
 import { resolveTokenBySymbol } from "@/lib/tokens"
-import { parseEther } from "viem"
+import { parseEther, type Address } from "viem"
 import { fetchHistoricalData, formatHistoricalDataForAI } from "@/lib/coingecko-history"
 import { formatTrigger } from "@/lib/shared/rules"
 
@@ -92,6 +92,114 @@ export async function POST(req: Request) {
     
     // Auto-pilot rule suggestion intent
     const ruleIntent = /(suggest|create|setup|build|make|generate|recommend).*?(rule|auto.*pilot|strategy|dca|rebalance)/i.test(lastUserMsg)
+    
+    // Address query intent (bypass agent for instant response)
+    const addressIntent = /\b(what.{0,20}(is|s).{0,20}(my|the).{0,20}(address|wallet)|my.{0,10}address|my.{0,10}wallet|show.{0,10}address|get.{0,10}address)\b/i.test(lastUserMsg)
+    
+    if (addressIntent) {
+      try {
+        const { getAddress, getEOAAddress } = await getAgent(chainOverride)
+        const smart = await getAddress()
+        const eoa = await getEOAAddress()
+        const clientEOA = (body.walletAddress && /^0x[a-fA-F0-9]{40}$/.test(body.walletAddress)) ? body.walletAddress : undefined
+        
+        let response = '🔑 **Your Wallet Addresses:**\n\n'
+        
+        // Smart Account (primary for gasless operations)
+        response += `**Smart Account** (Gasless):\n\`${smart}\`\n\n`
+        
+        // Server EOA (agent's private key)
+        response += `**Server EOA** (Agent Key):\n\`${eoa}\`\n\n`
+        
+        // Connected EOA (if provided from frontend)
+        if (clientEOA) {
+          response += `**Connected Wallet** (Your Browser):\n\`${clientEOA}\`\n\n`
+        }
+        
+        response += '💡 *Use the Smart Account address for gasless transactions and receiving funds.*'
+        
+        if (smart.toLowerCase() === eoa.toLowerCase()) {
+          response += '\n\n⚠️ *Note: Smart account shows EOA as fallback. Fund the EOA to deploy your smart account.*'
+        }
+        
+        return NextResponse.json({ 
+          ok: true, 
+          content: response,
+          threadId: config.configurable.thread_id 
+        })
+      } catch (e: any) {
+        return NextResponse.json({ 
+          ok: true, 
+          content: `❌ Failed to retrieve addresses: ${e?.message || String(e)}`,
+          threadId: config.configurable.thread_id 
+        })
+      }
+    }
+    
+    // Balance query intent (bypass agent for instant response)
+    const balanceIntent = /\b(what.{0,20}(is|s).{0,20}(my|the).{0,20}balance|my.{0,10}balance|show.{0,10}balance|get.{0,10}balance|check.{0,10}balance|balances?)\b/i.test(lastUserMsg)
+    
+    if (balanceIntent) {
+      try {
+        const { getAddress, getBalance } = await getAgent(chainOverride)
+        const addr = await getAddress()
+        const chainId = body.chainId || chainOverride || 43113
+        
+        // Check if specific token mentioned
+        const tokenMatch = lastUserMsg.match(/\b(USDC|USDT|DAI|WETH|WBTC|WAVAX|ETH|BTC|AVAX)\b/i)
+        const tokenSymbol = tokenMatch?.[1]?.toUpperCase()
+        
+        if (tokenSymbol && tokenSymbol !== 'AVAX') {
+          // Get specific token balance
+          const token = resolveTokenBySymbol(tokenSymbol, chainId)
+          if (!token) {
+            return NextResponse.json({ 
+              ok: true, 
+              content: `❌ Token ${tokenSymbol} not found on this chain.`,
+              threadId: config.configurable.thread_id 
+            })
+          }
+          
+          const balance = await getBalance(token.address as Address, addr)
+          const balNum = parseFloat(balance)
+          const formattedBal = balNum >= 1 ? balNum.toFixed(4) : balNum.toExponential(4)
+          
+          return NextResponse.json({ 
+            ok: true, 
+            content: `💰 **${tokenSymbol} Balance:**\n\`${formattedBal} ${tokenSymbol}\`\n\n📍 Account: \`${addr}\``,
+            threadId: config.configurable.thread_id 
+          })
+        } else {
+          // Get native AVAX balance
+          const nativeBalance = await getBalance(undefined, addr)
+          const balNum = parseFloat(nativeBalance)
+          const formattedBal = balNum.toFixed(4)
+          
+          let response = `💰 **Your Balances:**\n\n`
+          response += `**Native Token (AVAX):**\n\`${formattedBal} AVAX\`\n\n`
+          response += `📍 Account: \`${addr}\``
+          
+          if (balNum === 0) {
+            response += '\n\n💡 *Fund your account to start making transactions.*'
+            if (chainId === 43113) {
+              response += '\n🚰 Get testnet AVAX: https://faucet.avax.network/'
+            }
+          }
+          
+          return NextResponse.json({ 
+            ok: true, 
+            content: response,
+            threadId: config.configurable.thread_id 
+          })
+        }
+      } catch (e: any) {
+        return NextResponse.json({ 
+          ok: true, 
+          content: `❌ Failed to retrieve balance: ${e?.message || String(e)}`,
+          threadId: config.configurable.thread_id 
+        })
+      }
+    }
     
     // MCP analytics intents: analyze, predict, strategy, chart requests
     const mcpIntent = /(analy[sz]e|analysis|prediction|predict|forecast|strategy|strategies|portfolio\s+strategy|chart|charts|graph|graphs)/i.test(lastUserMsg)
