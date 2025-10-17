@@ -561,12 +561,17 @@ export async function POST(req: Request) {
     if (/\b(smart\s+(?:account\s+)?balance|smart\s+account)\b/i.test(text)) {
       try {
         const smartAddress = await getSmartAddressOrNull()
+        const eoaAddress = await getEOAAddress()
         const chainId = Number(process.env.CHAIN_ID || 43113)
         
         if (!smartAddress) {
+          // Smart account not deployed - check EOA balance instead
+          const avaxBalance = await publicClient.getBalance({ address: eoaAddress })
+          const avaxFormatted = Number(avaxBalance) / 1e18
+          
           return NextResponse.json({
             ok: true,
-            content: `❌ **Smart Account Not Available**\n\nNo smart account address found. The smart account may not be deployed yet or there might be a configuration issue.\n\nTry using regular balance commands for your EOA instead.`,
+            content: `🏦 **Smart Account Status: Not Deployed**\n\n⚠️ Your smart account will be deployed on your first gasless transaction.\n\n**EOA Balance (Current):**\n💰 \`${avaxFormatted.toFixed(4)} AVAX\`\n\n📍 Address: \`${eoaAddress}\`\n\n💡 **Note:** Your EOA balance will be used until the smart account is deployed. After deployment, the smart account will have its own separate balance.\n\n🚰 Need more testnet AVAX? Visit: https://faucet.avax.network/`,
             threadId: config.configurable.thread_id
           })
         }
@@ -609,7 +614,7 @@ export async function POST(req: Request) {
         
         return NextResponse.json({
           ok: true,
-          content: `🏦 **Smart Account Balance** (Avalanche ${chainId === 43114 ? 'Mainnet' : 'Fuji'})\n\nSmart Account: ${smartAddress}\n\nAVAX: ${avaxFormatted.toFixed(4)}${tokenBalances}`,
+          content: `🏦 **Smart Account Balance** (Avalanche ${chainId === 43114 ? 'Mainnet' : 'Fuji'})\n\n✅ Smart Account Deployed\n\n💰 **AVAX:** \`${avaxFormatted.toFixed(4)}\`${tokenBalances}\n\n📍 Smart Account: \`${smartAddress}\``,
           threadId: config.configurable.thread_id
         })
       } catch (error) {
@@ -630,16 +635,17 @@ export async function POST(req: Request) {
         const networkName = chainId === 43114 ? 'Avalanche Mainnet' : 'Avalanche Fuji testnet'
         
         if (!smartAddress) {
+          // Smart account not deployed - provide clear guidance
           return NextResponse.json({
             ok: true,
-            content: `🏦 **Smart Account Status**\n\n❌ No smart account available\n\nThe smart account may not be deployed yet. You can use your EOA instead:\n\n📱 **Your EOA**: ${eoaAddress}`,
+            content: `🏦 **Smart Account Status**\n\n⚠️ **Not Deployed Yet**\n\nYour smart account is not deployed on ${networkName}. It will be automatically deployed on your first gasless transaction.\n\n**Your EOA Address:**\n\`${eoaAddress}\`\n\n**Current Balance:** Check with "get my balance"\n\n💡 **How to Deploy:**\n• Make any gasless transaction (transfer/swap)\n• The smart account will deploy automatically\n• You can use your EOA for now - it has the same address as your future smart account\n\n� **Need testnet AVAX?** Visit: https://faucet.avax.network/`,
             threadId: config.configurable.thread_id
           })
         }
         
         return NextResponse.json({
           ok: true,
-          content: `🏦 **Smart Account Address**\n\n${smartAddress}\n\n📱 **Your EOA**: ${eoaAddress}\n\n*Both on ${networkName}*`,
+          content: `🏦 **Smart Account Address**\n\n\`${smartAddress}\`\n\n📱 **Your EOA**: \`${eoaAddress}\`\n\n✅ Smart account is deployed on ${networkName}`,
           threadId: config.configurable.thread_id
         })
       } catch (error) {
